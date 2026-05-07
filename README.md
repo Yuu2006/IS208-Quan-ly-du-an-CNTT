@@ -14,7 +14,7 @@
 
 | STT | MSSV | Họ và Tên | GitHub | Email | 
 | :--- | :--- | :--- | :--- | :--- | 
-| 1 | 24521817 | Đoàn Thị Thuỳ Trang | https://github.com/ThuyTrang2302 | 24521817@gm.uit.edu.vn |
+| 1 | 24521817 | Đoàn Thị Thuỳ Trang | https://github.com/ThorBietBay001 | 24521817@gm.uit.edu.vn |
 | 2 | 24521769 | Lê Thị Thanh Tiền | https://github.com/LibraTienLe | 24521769@gm.uit.edu.vn |
 | 3 | 24521776 | Nguyễn Trần Thủy Tiên | https://github.com/NgKthy | 24521776@gm.uit.edu.vn | 
 | 4 | 24520971 | Trần Thị Phương Linh | https://github.com/PhuongLinh2finh3 | 24520971@gm.uit.edu.vn | 
