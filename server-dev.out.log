@@ -1,0 +1,5 @@
+
+> bluefood-backend@1.0.0 dev
+> tsx watch src/server.ts
+
+Backend API is running at http://localhost:4000
