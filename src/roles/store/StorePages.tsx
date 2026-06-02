@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -44,44 +44,43 @@ import {
   X
 } from 'lucide-react';
 import { useAuth } from '../../auth';
-import { confirmStoreDelivery, getStoreDeliveries, getStoreIssues, StoreDelivery, StoreIssue } from '../../api';
-import { deliveries as fallbackDeliveries } from '../../data';
+import { confirmStoreDelivery, getStoreDeliveries, getStoreIssues, reportStoreIssue, StoreDelivery, StoreIssue, StoreIssuePayload } from '../../api';
 import { AppHeader, Badge, BottomNav, Metric, ProfileRow, QuickAction } from '../../shared/ui';
 
-function useStoreDeliveries() {
-  const [deliveries, setDeliveries] = useState<StoreDelivery[]>([...fallbackDeliveries]);
+function useStoreDeliveries(status?: 'pending' | 'delivered') {
+  const [deliveries, setDeliveries] = useState<StoreDelivery[]>([]);
 
   useEffect(() => {
     let active = true;
 
-    getStoreDeliveries()
+    getStoreDeliveries(status)
       .then((items) => {
-        if (active && items.length) setDeliveries(items);
+        if (active) setDeliveries(items);
       })
       .catch(() => {
-        if (active) setDeliveries([...fallbackDeliveries]);
+        if (active) setDeliveries([]);
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [status]);
 
   return { deliveries, setDeliveries };
 }
 
 function useStoreIssues() {
-  const [issues, setIssues] = useState<StoreIssue[]>(issueReports);
+  const [issues, setIssues] = useState<StoreIssue[]>([]);
 
   useEffect(() => {
     let active = true;
 
     getStoreIssues()
       .then((items) => {
-        if (active && items.length) setIssues(items);
+        if (active) setIssues(items);
       })
       .catch(() => {
-        if (active) setIssues(issueReports);
+        if (active) setIssues([]);
       });
 
     return () => {
@@ -92,15 +91,28 @@ function useStoreIssues() {
   return issues;
 }
 
+function EmptyState({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+  return (
+    <div className="rounded-2xl bg-white p-5 text-center shadow-card">
+      <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-slate-50 text-muted">
+        {icon}
+      </div>
+      <p className="font-extrabold text-ink">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
+    </div>
+  );
+}
+
 export function StoreDashboard() {
   const { user } = useAuth();
-  const { deliveries } = useStoreDeliveries();
+  const { deliveries } = useStoreDeliveries('pending');
+  const { deliveries: confirmedDeliveries } = useStoreDeliveries('delivered');
   const issues = useStoreIssues();
   const metrics = useMemo(() => ({
-    pending: deliveries.filter((delivery) => delivery.status === 'Arriving').length,
-    arrived: deliveries.filter((delivery) => delivery.status === 'Arrived').length,
+    pending: deliveries.length,
+    arrived: confirmedDeliveries.length,
     issues: issues.length
-  }), [deliveries, issues]);
+  }), [confirmedDeliveries.length, deliveries.length, issues.length]);
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
@@ -111,7 +123,11 @@ export function StoreDashboard() {
           <QuickAction to="/store/receipts" icon={<ClipboardCheck />} label="Lịch sử nhận hàng" />
           <QuickAction to="/store/issues" icon={<Flag />} label="Lịch sử lỗi" />
         </div>
-        {deliveries.map((delivery) => <Link to={`/store/receive/${delivery.batchId}`} key={delivery.id} className="block rounded-xl bg-white p-4 shadow-card"><div className="mb-2 flex justify-between"><p className="font-bold text-ink">{delivery.batchId}</p><Badge tone={delivery.status === 'Issue' ? 'red' : delivery.status === 'Arrived' ? 'green' : 'amber'}>{delivery.status === 'Issue' ? 'Sự cố' : delivery.status === 'Arrived' ? 'Đã đến' : 'Đang đến'}</Badge></div><p className="font-semibold text-slate-700">{delivery.product}</p><p className="text-sm text-muted">{delivery.supplier} · {delivery.eta}</p></Link>)}
+        {deliveries.length ? (
+          deliveries.map((delivery) => <Link to={`/store/receive/${delivery.batchId}`} key={delivery.id} className="block rounded-xl bg-white p-4 shadow-card"><div className="mb-2 flex justify-between"><p className="font-bold text-ink">{delivery.batchId}</p><Badge tone="amber">Chờ xác nhận</Badge></div><p className="font-semibold text-slate-700">{delivery.product}</p><p className="text-sm text-muted">{delivery.supplier} · {delivery.eta}</p></Link>)
+        ) : (
+          <EmptyState icon={<PackagePlus size={24} />} title="Không có đơn chờ xác nhận" description="Chỉ các đơn đã đến kho với trạng thái ARRIVED_WAREHOUSE mới hiển thị ở đây." />
+        )}
       </div>
       <BottomNav />
     </div>
@@ -122,18 +138,30 @@ export function StoreReceiveDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { deliveries, setDeliveries } = useStoreDeliveries();
+  const { deliveries, setDeliveries } = useStoreDeliveries('pending');
   const [saving, setSaving] = useState(false);
-  const delivery = deliveries.find((item) => item.batchId === id) ?? deliveries[0];
-  const statusTone = delivery.status === 'Issue' ? 'red' : delivery.status === 'Arrived' ? 'green' : 'amber';
-  const statusText = delivery.status === 'Issue' ? 'Sự cố' : delivery.status === 'Arrived' ? 'Đã đến' : 'Đang đến';
-  const [productName, quantityText] = delivery.product.split(' - ');
+  const delivery = deliveries.find((item) => item.batchId === id);
+  if (!delivery) {
+    return (
+      <div className="flex min-h-full flex-col bg-paper">
+        <AppHeader title="Chi tiết sản phẩm" subtitle="Không tìm thấy lô hàng" back />
+        <div className="flex-1 px-5 py-5">
+          <EmptyState icon={<PackageCheck size={24} />} title="Không có dữ liệu nhận hàng" description="Lô hàng này chưa có trong dữ liệu vận chuyển hiện tại." />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
+  const selectedDelivery = delivery;
+  const statusText = 'Chờ xác nhận';
+  const [productName, quantityText] = selectedDelivery.product.split(' - ');
 
   async function confirmDelivery() {
     setSaving(true);
     try {
-      const confirmed = await confirmStoreDelivery(delivery.batchId, user?.id);
-      setDeliveries((items) => items.map((item) => item.batchId === confirmed.batchId ? confirmed : item));
+      const confirmed = await confirmStoreDelivery(selectedDelivery.batchId, user?.id);
+      setDeliveries((items) => items.filter((item) => item.batchId !== confirmed.batchId));
       navigate('/store/receipts');
     } catch {
       navigate('/store/receipts');
@@ -144,24 +172,24 @@ export function StoreReceiveDetail() {
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
-      <AppHeader title="Chi tiết sản phẩm" subtitle={delivery.batchId} back />
+      <AppHeader title="Chi tiết sản phẩm" subtitle={selectedDelivery.batchId} back />
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 pb-28">
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase text-primary">{delivery.batchId}</p>
+              <p className="text-xs font-bold uppercase text-primary">{selectedDelivery.batchId}</p>
               <h2 className="mt-1 text-xl font-extrabold leading-tight text-ink">{productName}</h2>
               {quantityText && <p className="mt-1 text-sm font-semibold text-slate-600">{quantityText}</p>}
             </div>
-            <Badge tone={statusTone}>{statusText}</Badge>
+            <Badge tone="amber">{statusText}</Badge>
           </div>
-          <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-slate-700">{delivery.supplier}</p>
+          <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-slate-700">{selectedDelivery.supplier}</p>
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-card">
-          <ProfileRow label="Mã lô" value={delivery.batchId} />
-          <ProfileRow label="Nhà cung cấp" value={delivery.supplier} />
-          <ProfileRow label="Thời gian" value={delivery.eta} />
+          <ProfileRow label="Mã lô" value={selectedDelivery.batchId} />
+          <ProfileRow label="Nhà cung cấp" value={selectedDelivery.supplier} />
+          <ProfileRow label="Thời gian" value={selectedDelivery.eta} />
           <ProfileRow label="Tình trạng" value={statusText} last />
         </section>
 
@@ -175,7 +203,7 @@ export function StoreReceiveDetail() {
         <button className="primary-btn flex w-full items-center justify-center gap-2" type="button" onClick={confirmDelivery} disabled={saving}>
           <CheckCircle2 size={18} /> {saving ? 'Đang xác nhận...' : 'Xác nhận nhận hàng'}
         </button>
-        <Link to="/store/report" className="outline-btn flex w-full items-center justify-center gap-2 border-red-200 text-red-600">
+        <Link to={`/store/report/${selectedDelivery.batchId}`} className="outline-btn flex w-full items-center justify-center gap-2 border-red-200 text-red-600">
           <Flag size={18} /> Báo cáo sự cố
         </Link>
       </div>
@@ -184,20 +212,21 @@ export function StoreReceiveDetail() {
 }
 
 export function StoreReceiptHistory() {
-  const { deliveries } = useStoreDeliveries();
-  const confirmedDeliveries = deliveries.filter((delivery) => delivery.status === 'Arrived');
+  const { deliveries: confirmedDeliveries } = useStoreDeliveries('delivered');
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
       <AppHeader title="Lịch sử nhận hàng" subtitle="Các lô đã xác nhận tại store" icon={<ClipboardCheck size={22} />} />
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5">
-        {confirmedDeliveries.map((delivery) => (
+        {confirmedDeliveries.length ? confirmedDeliveries.map((delivery) => (
           <Link to={`/store/receipts/${delivery.batchId}`} key={delivery.id} className="block rounded-xl bg-white p-4 shadow-card">
             <div className="mb-2 flex items-start justify-between gap-3"><p className="font-bold text-ink">{delivery.batchId}</p><Badge>Đã xác nhận</Badge></div>
             <p className="font-semibold text-slate-700">{delivery.product}</p>
             <p className="mt-1 text-sm text-muted">{delivery.supplier} · {delivery.eta}</p>
           </Link>
-        ))}
+        )) : (
+          <EmptyState icon={<ClipboardCheck size={24} />} title="Chưa có lịch sử nhận hàng" description="Các lô đã xác nhận sẽ xuất hiện tại đây." />
+        )}
       </div>
       <BottomNav />
     </div>
@@ -206,8 +235,20 @@ export function StoreReceiptHistory() {
 
 export function StoreReceiptDetail() {
   const { id } = useParams();
-  const { deliveries } = useStoreDeliveries();
-  const delivery = deliveries.find((item) => item.batchId === id && item.status === 'Arrived') ?? deliveries.find((item) => item.status === 'Arrived') ?? deliveries[0];
+  const { deliveries } = useStoreDeliveries('delivered');
+  const delivery = deliveries.find((item) => item.batchId === id && item.status === 'Arrived');
+  if (!delivery) {
+    return (
+      <div className="flex min-h-full flex-col bg-paper">
+        <AppHeader title="Chi tiết đã xác nhận" subtitle="Không tìm thấy phiếu nhận" back />
+        <div className="flex-1 px-5 py-5">
+          <EmptyState icon={<ClipboardCheck size={24} />} title="Không có dữ liệu phiếu nhận" description="Phiếu nhận này chưa tồn tại hoặc chưa được xác nhận." />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
   const [productName, quantityText] = delivery.product.split(' - ');
 
   return (
@@ -240,22 +281,6 @@ export function StoreReceiptDetail() {
   );
 }
 
-export const issueReports = [
-  {
-    id: 'issue-001',
-    code: 'DL-2024-0001',
-    batchId: 'BF-2024-0888',
-    product: 'Ớt chuông - 95 kg',
-    supplier: 'Delta Agro Ltd.',
-    issueType: 'Bao bì hư hỏng',
-    affectedQuantity: '1 phần - 18 kg',
-    reportedAt: '30/05/2026 · 08:05',
-    status: 'Cần xử lý',
-    description: 'Một phần thùng hàng bị móp và ẩm ở góc bao bì. Nhân viên cần kiểm tra lại chất lượng trước khi nhập kho và tách riêng số lượng bị ảnh hưởng.',
-    imageUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 640 360%22%3E%3Cdefs%3E%3ClinearGradient id=%22bg%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22%3E%3Cstop stop-color=%22%23fee2e2%22/%3E%3Cstop offset=%221%22 stop-color=%22%23f8fafc%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%22640%22 height=%22360%22 fill=%22url(%23bg)%22/%3E%3Crect x=%22108%22 y=%2290%22 width=%22424%22 height=%22192%22 rx=%2228%22 fill=%22%23fff%22 stroke=%22%23fecaca%22 stroke-width=%228%22/%3E%3Cpath d=%22M170 139h300M170 183h230M170 227h270%22 stroke=%22%2394a3b8%22 stroke-width=%2216%22 stroke-linecap=%22round%22/%3E%3Cpath d=%22M462 86l58 57-55 58 48 51%22 fill=%22none%22 stroke=%22%23ef4444%22 stroke-width=%2218%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3Ccircle cx=%22508%22 cy=%22276%22 r=%2230%22 fill=%22%23ef4444%22/%3E%3Cpath d=%22M508 260v20%22 stroke=%22%23fff%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3Ccircle cx=%22508%22 cy=%22292%22 r=%224%22 fill=%22%23fff%22/%3E%3C/svg%3E'
-  }
-];
-
 export function StoreIssueHistory() {
   const issues = useStoreIssues();
 
@@ -263,7 +288,7 @@ export function StoreIssueHistory() {
     <div className="flex min-h-full flex-col bg-paper">
       <AppHeader title="Đơn lỗi" subtitle="Các báo cáo hàng hóa bất thường" icon={<Flag size={22} />} />
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5">
-        {issues.map((issue) => (
+        {issues.length ? issues.map((issue) => (
           <Link to={`/store/issues/${issue.id}`} key={issue.id} className="block rounded-xl bg-white p-4 shadow-card">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
@@ -275,7 +300,9 @@ export function StoreIssueHistory() {
             <p className="font-semibold text-slate-700">{issue.product}</p>
             <p className="mt-1 text-sm text-muted">{issue.issueType} · {issue.reportedAt}</p>
           </Link>
-        ))}
+        )) : (
+          <EmptyState icon={<Flag size={24} />} title="Chưa có báo cáo lỗi" description="Các sự cố hàng hóa thật sẽ hiển thị tại đây sau khi được ghi nhận." />
+        )}
       </div>
       <BottomNav />
     </div>
@@ -285,14 +312,25 @@ export function StoreIssueHistory() {
 export function StoreIssueDetail() {
   const { id } = useParams();
   const issues = useStoreIssues();
-  const issue = issues.find((item) => item.id === id) ?? issues[0];
+  const issue = issues.find((item) => item.id === id);
+  if (!issue) {
+    return (
+      <div className="flex min-h-full flex-col bg-paper">
+        <AppHeader title="Đơn lỗi" subtitle="Không tìm thấy báo cáo" back />
+        <div className="flex-1 px-5 py-5">
+          <EmptyState icon={<Flag size={24} />} title="Không có dữ liệu báo cáo" description="Báo cáo lỗi này chưa tồn tại trong dữ liệu hiện tại." />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
       <AppHeader title={issue.code} subtitle={issue.batchId} back />
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
         <section className="overflow-hidden rounded-2xl bg-white shadow-card">
-          <img src={issue.imageUrl} alt={`Ảnh hiện trường ${issue.code}`} className="h-44 w-full object-cover" />
+          {issue.imageUrl && <img src={issue.imageUrl} alt={`Ảnh hiện trường ${issue.code}`} className="h-44 w-full object-cover" />}
           <div className="p-5">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
@@ -323,12 +361,64 @@ export function StoreIssueDetail() {
 }
 
 export function StoreIssueReport() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { deliveries, setDeliveries } = useStoreDeliveries('pending');
+  const selectedDelivery = deliveries.find((delivery) => delivery.batchId === id);
   const [affectedScope, setAffectedScope] = useState<'all' | 'partial'>('all');
+  const [incidentType, setIncidentType] = useState<StoreIssuePayload['incidentType']>('DAMAGED');
+  const [description, setDescription] = useState('');
+  const [quantityAffected, setQuantityAffected] = useState('');
+  const [photoPath, setPhotoPath] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submitIssue() {
+    if (!selectedDelivery || !description.trim()) return;
+
+    setSaving(true);
+    try {
+      await reportStoreIssue(selectedDelivery.batchId, {
+        accountId: user?.id,
+        incidentType,
+        description: description.trim(),
+        quantityAffected: affectedScope === 'partial' ? Number(quantityAffected) : undefined,
+        photoPath: photoPath.trim() || undefined
+      });
+      setDeliveries((items) => items.filter((item) => item.batchId !== selectedDelivery.batchId));
+      navigate('/store/issues');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!selectedDelivery) {
+    return (
+      <div className="flex min-h-full flex-col bg-paper">
+        <AppHeader title="Báo cáo lỗi hàng hóa" subtitle="Không tìm thấy đơn chờ xác nhận" back />
+        <div className="flex-1 px-5 py-5">
+          <EmptyState icon={<Flag size={24} />} title="Không có đơn để báo cáo" description="Chỉ đơn ARRIVED_WAREHOUSE đang chờ xác nhận mới có thể báo cáo sự cố." />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
-      <AppHeader title="Báo cáo lỗi hàng hóa" subtitle="Nhân viên cửa hàng báo cáo" back />
+      <AppHeader title="Báo cáo lỗi hàng hóa" subtitle={selectedDelivery.batchId} back />
       <form className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <section className="rounded-2xl bg-white p-5 shadow-card">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <p className="font-bold text-ink">{selectedDelivery.batchId}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-700">{selectedDelivery.product}</p>
+            </div>
+            <Badge tone="amber">Chờ xác nhận</Badge>
+          </div>
+          <p className="text-sm text-muted">{selectedDelivery.supplier} · {selectedDelivery.eta}</p>
+        </section>
+
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <div className="mb-4 flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-xl bg-red-50 text-red-600">
@@ -341,16 +431,15 @@ export function StoreIssueReport() {
           </div>
 
           <label className="form-label">Loại sự cố</label>
-          <select className="input mb-3">
-            <option>Bao bì hư hỏng</option>
-            <option>Sai số lượng</option>
-            <option>Không đạt chất lượng</option>
-            <option>Không đúng nhiệt độ</option>
-            <option>Khác</option>
+          <select className="input mb-3" value={incidentType} onChange={(event) => setIncidentType(event.target.value as StoreIssuePayload['incidentType'])}>
+            <option value="DAMAGED">Bao bì hư hỏng</option>
+            <option value="MISSING">Sai số lượng</option>
+            <option value="QUALITY_ISSUE">Không đạt chất lượng</option>
+            <option value="OTHER">Khác</option>
           </select>
 
           <label className="form-label">Mô tả chi tiết</label>
-          <textarea className="input mb-3 min-h-28 resize-none" placeholder="Mô tả tình trạng thực tế, vị trí phát hiện và mức độ ảnh hưởng..." />
+          <textarea className="input mb-3 min-h-28 resize-none" placeholder="Mô tả tình trạng thực tế, vị trí phát hiện và mức độ ảnh hưởng..." value={description} onChange={(event) => setDescription(event.target.value)} />
 
           <label className="form-label">Số lượng bị ảnh hưởng</label>
           <div className="mb-3 grid grid-cols-2 gap-2">
@@ -364,20 +453,15 @@ export function StoreIssueReport() {
             </label>
           </div>
           {affectedScope === 'partial' && (
-            <input className="input mb-3" type="number" min="0" placeholder="Nhập số lượng bị ảnh hưởng" />
+            <input className="input mb-3" type="number" min="0" placeholder="Nhập số lượng bị ảnh hưởng" value={quantityAffected} onChange={(event) => setQuantityAffected(event.target.value)} />
           )}
 
           <label className="form-label">Ảnh chụp hiện trường (nếu có)</label>
-          <label className="mb-3 flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-red-200 bg-red-50/60 px-4 py-5 text-center text-red-600">
-            <Camera size={28} />
-            <span className="mt-2 text-sm font-extrabold">Chụp ảnh hoặc tải ảnh hiện trường</span>
-            <span className="mt-1 text-xs font-semibold text-red-400">Hỗ trợ ảnh từ camera hoặc thư viện</span>
-            <input className="sr-only" type="file" accept="image/*" capture="environment" />
-          </label>
+          <input className="input mb-3" placeholder="Nhập đường dẫn ảnh nếu có" value={photoPath} onChange={(event) => setPhotoPath(event.target.value)} />
         </section>
 
-        <button className="primary-btn flex w-full items-center justify-center gap-2 bg-red-500 hover:bg-red-600" type="button">
-          <Flag size={18} /> Gửi báo cáo lỗi
+        <button className="primary-btn flex w-full items-center justify-center gap-2 bg-red-500 hover:bg-red-600" type="button" onClick={submitIssue} disabled={saving || !description.trim()}>
+          <Flag size={18} /> {saving ? 'Đang gửi...' : 'Gửi báo cáo lỗi'}
         </button>
       </form>
     </div>

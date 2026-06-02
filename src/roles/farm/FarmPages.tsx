@@ -44,7 +44,7 @@ import {
   UserCircle,
   X
 } from 'lucide-react';
-import { createBatchRecord, createCertificateForBatch, deleteCertificateFromBatch, updateCertificateForBatch } from '../../api';
+import { assignBatchTransport, createBatchRecord, createCertificateForBatch, deleteCertificateFromBatch, DeliveryStaff, DestinationStore, getDeliveryStaff, getDestinationStores, updateBatchRecord, updateCertificateForBatch } from '../../api';
 import { Batch, BatchStatus, Certificate, CertificateStatus } from '../../data';
 import { AppHeader, Badge, BottomNav, LoginPrompt, Metric, ProfileRow, certificateLabels, certificateTones, statusClasses, statusLabels } from '../../shared/ui';
 
@@ -118,6 +118,21 @@ function fromDateInputValue(value: string) {
   const [year, month, day] = value.split('-');
   if (!day || !month || !year) return value;
   return `${day}/${month}/${year}`;
+}
+
+function nextBatchCode(batches: Batch[]) {
+  const usedCodes = new Set(batches.map((batch) => batch.batchCode));
+  const maxSequence = batches.reduce((max, batch) => {
+    const match = /^BF-2026-(\d+)$/.exec(batch.batchCode);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  for (let sequence = maxSequence + 1; sequence < maxSequence + 10_000; sequence += 1) {
+    const code = `BF-2026-${String(sequence).padStart(4, '0')}`;
+    if (!usedCodes.has(code)) return code;
+  }
+
+  return `BF-2026-${Date.now().toString(36).toUpperCase()}`;
 }
 
 export function FarmDashboard({ batches }: { batches: Batch[] }) {
@@ -221,8 +236,9 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
   const { id } = useParams();
   const navigate = useNavigate();
   const editingBatch = batches.find((item) => item.id === id);
+  const suggestedBatchCode = useMemo(() => editingBatch?.batchCode ?? nextBatchCode(batches), [batches, editingBatch?.batchCode]);
   const [form, setForm] = useState({
-    batchCode: editingBatch?.batchCode ?? `BF-2026-${String(batches.length + 1).padStart(4, '0')}`,
+    batchCode: suggestedBatchCode,
     productName: editingBatch?.productName ?? '',
     productType: editingBatch?.productType ?? '',
     quantity: String(editingBatch?.quantity ?? ''),
@@ -233,6 +249,15 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
     notes: editingBatch?.notes ?? '',
     hasQR: editingBatch?.hasQR ?? true
   });
+  const [formMessage, setFormMessage] = useState('');
+
+  useEffect(() => {
+    if (editingBatch) return;
+    setForm((current) => {
+      if (current.batchCode && !batches.some((batch) => batch.batchCode === current.batchCode)) return current;
+      return { ...current, batchCode: suggestedBatchCode };
+    });
+  }, [batches, editingBatch, suggestedBatchCode]);
 
   function updateField(name: keyof typeof form, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -240,9 +265,11 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setFormMessage('');
+    const batchCode = form.batchCode.trim() || suggestedBatchCode;
     const nextBatch: Batch = {
       id: editingBatch?.id ?? createId('batch'),
-      batchCode: form.batchCode.trim() || `BF-2026-${String(batches.length + 1).padStart(4, '0')}`,
+      batchCode,
       productName: form.productName.trim() || 'Lô hàng mới',
       productType: form.productType.trim() || 'Nông sản',
       quantity: Number(form.quantity) || 0,
@@ -252,13 +279,18 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
       location: form.location.trim(),
       certifications: editingBatch?.certifications ?? [],
       hasQR: true,
-      qrCodePath: editingBatch?.qrCodePath ?? `/trace/${encodeURIComponent(form.batchCode.trim() || `BF-2026-${String(batches.length + 1).padStart(4, '0')}`)}`,
+      qrCodePath: editingBatch?.qrCodePath ?? `/trace/${encodeURIComponent(batchCode)}`,
       notes: form.notes.trim()
     };
 
     if (editingBatch) {
-      await onSave(nextBatch);
-      navigate(`/farm/batches/${nextBatch.id}`);
+      try {
+        const updatedBatch = await updateBatchRecord(editingBatch.batchCode, nextBatch);
+        await onSave(updatedBatch);
+        navigate(`/farm/batches/${updatedBatch.id}`);
+      } catch {
+        setFormMessage('Không lưu được lô hàng. Vui lòng kiểm tra mã lô có bị trùng hoặc backend đang chạy.');
+      }
       return;
     }
 
@@ -267,8 +299,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
       await onSave(createdBatch);
       navigate(`/farm/batches/${createdBatch.id}`);
     } catch {
-      await onSave(nextBatch);
-      navigate(`/farm/batches/${nextBatch.id}`);
+      setFormMessage('Không tạo được lô hàng. Mã lô có thể đã tồn tại trong cơ sở dữ liệu.');
     }
   }
 
@@ -323,13 +354,19 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
           </div>
         </section>
 
+        {formMessage ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+            {formMessage}
+          </div>
+        ) : null}
+
         <button className="primary-btn flex w-full items-center justify-center gap-2" type="submit"><Save size={18} /> Lưu lô hàng</button>
       </form>
     </div>
   );
 }
 
-export function BatchDetail({ batches, onDelete, onCertificatesChange }: { batches: Batch[]; onDelete: (id: string) => void; onCertificatesChange: (batchId: string, certifications: Certificate[]) => void }) {
+export function BatchDetail({ batches, onDelete, onCertificatesChange, onTransportAssigned }: { batches: Batch[]; onDelete: (id: string) => void; onCertificatesChange: (batchId: string, certifications: Certificate[]) => void; onTransportAssigned?: (batch: Batch) => void | Promise<void> }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const batch = batches.find((item) => item.id === id) ?? batches[0];
@@ -339,12 +376,45 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange }: { batch
   const [searchTerm, setSearchTerm] = useState('');
   const [uploadMessage, setUploadMessage] = useState('');
   const [showQrModal, setShowQrModal] = useState(false);
+  const [deliveryStaff, setDeliveryStaff] = useState<DeliveryStaff[]>([]);
+  const [destinationStores, setDestinationStores] = useState<DestinationStore[]>([]);
+  const [assignForm, setAssignForm] = useState({ driverAccountId: '', receiverPartnerId: '' });
+  const [assigning, setAssigning] = useState(false);
+  const [assignMessage, setAssignMessage] = useState('');
   const visibleCertificates = useMemo(() => {
     const list = batch?.certifications ?? [];
     if (!searchTerm.trim()) return list;
     const keyword = searchTerm.trim().toLowerCase();
     return list.filter((cert) => [cert.name, cert.issuer, cert.issuedDate, cert.expiryDate, cert.note, certificateLabels[cert.status]].some((value) => value.toLowerCase().includes(keyword)));
   }, [batch, searchTerm]);
+  const selectedStore = useMemo(() => destinationStores.find((store) => store.id === assignForm.receiverPartnerId), [assignForm.receiverPartnerId, destinationStores]);
+  const selectedStaff = useMemo(() => deliveryStaff.find((staff) => staff.id === assignForm.driverAccountId), [assignForm.driverAccountId, deliveryStaff]);
+
+  useEffect(() => {
+    if (batch?.status !== 'ready') return;
+    let active = true;
+
+    Promise.all([getDeliveryStaff(), getDestinationStores()])
+      .then(([staffItems, storeItems]) => {
+        if (!active) return;
+        setDeliveryStaff(staffItems);
+        setDestinationStores(storeItems);
+        setAssignForm((current) => ({
+          ...current,
+          driverAccountId: current.driverAccountId || staffItems[0]?.id || '',
+          receiverPartnerId: current.receiverPartnerId || storeItems[0]?.id || ''
+        }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setDeliveryStaff([]);
+        setDestinationStores([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [batch?.status]);
 
   if (!batch) return <Navigate to="/farm/batches" replace />;
 
@@ -443,6 +513,34 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange }: { batch
     navigate('/farm/batches');
   }
 
+  async function submitTransportAssignment(event: FormEvent) {
+    event.preventDefault();
+    if (!assignForm.driverAccountId) {
+      setAssignMessage('Chọn nhân viên giao hàng.');
+      return;
+    }
+    if (!assignForm.receiverPartnerId) {
+      setAssignMessage('Chọn cửa hàng điểm đến.');
+      return;
+    }
+
+    setAssigning(true);
+    setAssignMessage('');
+
+    try {
+      const updatedBatch = await assignBatchTransport(batch.batchCode, {
+        driverAccountId: assignForm.driverAccountId,
+        receiverPartnerId: assignForm.receiverPartnerId
+      });
+      await onTransportAssigned?.(updatedBatch);
+      setAssignMessage('Đã phân công vận chuyển và chuyển lô sang trạng thái đang vận chuyển.');
+    } catch {
+      setAssignMessage('Không phân công được chuyến vận chuyển. Kiểm tra lô hàng có đang ở trạng thái sẵn sàng không.');
+    } finally {
+      setAssigning(false);
+    }
+  }
+
   return (
     <div className="relative flex min-h-full flex-col bg-paper">
       <AppHeader title={batch.batchCode} subtitle={batch.productName} back action={<Link to={`/farm/batches/${batch.id}/edit`} className="icon-btn"><Pencil size={19} /></Link>} />
@@ -475,6 +573,101 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange }: { batch
           </div>
           {batch.notes && <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{batch.notes}</p>}
         </div>
+
+        {batch.status === 'ready' && (
+          <>
+            <section className="rounded-2xl bg-white p-5 shadow-card">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-primary">
+                  <Store size={21} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-ink">Địa điểm đến</h3>
+                  <p className="mt-1 text-sm text-muted">Chọn cửa hàng nhận lô hàng trước khi phân công vận chuyển.</p>
+                </div>
+              </div>
+
+              <label className="form-label">Cửa hàng điểm đến</label>
+              <div className="field mb-3">
+                <MapPin size={18} />
+                <select
+                  className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-ink outline-0"
+                  value={assignForm.receiverPartnerId}
+                  onChange={(event) => {
+                    setAssignMessage('');
+                    setAssignForm((current) => ({ ...current, receiverPartnerId: event.target.value }));
+                  }}
+                  disabled={assigning || !destinationStores.length}
+                >
+                  {!destinationStores.length && <option value="">Chưa có cửa hàng</option>}
+                  {destinationStores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}{store.address ? ` - ${store.address}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm">
+                <p className="font-extrabold text-ink">{selectedStore?.name ?? 'Chưa chọn cửa hàng'}</p>
+                <p className="mt-1 font-semibold text-muted">{selectedStore?.address || 'Chưa cập nhật địa chỉ'}</p>
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white p-5 shadow-card">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-primary">
+                  <Truck size={21} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-ink">Phân công vận chuyển</h3>
+                  <p className="mt-1 text-sm text-muted">Chọn nhân viên giao hàng và chuyển lô sang trạng thái đang vận chuyển.</p>
+                </div>
+              </div>
+
+              <form onSubmit={submitTransportAssignment}>
+                <label className="form-label">Nhân viên giao hàng</label>
+                <div className="field mb-3">
+                  <User size={18} />
+                  <select
+                    className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-ink outline-0"
+                    value={assignForm.driverAccountId}
+                    onChange={(event) => {
+                      setAssignMessage('');
+                      setAssignForm((current) => ({ ...current, driverAccountId: event.target.value }));
+                    }}
+                    disabled={assigning || !deliveryStaff.length}
+                  >
+                    {!deliveryStaff.length && <option value="">Chưa có nhân viên giao hàng</option>}
+                    {deliveryStaff.map((staff) => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.fullName}{staff.phone ? ` - ${staff.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-3 rounded-xl bg-slate-50 px-3 py-3 text-sm">
+                  <p className="font-extrabold text-ink">{selectedStaff?.fullName ?? 'Chưa chọn nhân viên'}</p>
+                  <p className="mt-1 font-semibold text-muted">{selectedStaff?.phone || selectedStaff?.email || 'Chưa cập nhật liên hệ'}</p>
+                </div>
+
+                {assignMessage && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">{assignMessage}</p>}
+
+                <button className="primary-btn flex w-full items-center justify-center gap-2 disabled:opacity-60" type="submit" disabled={assigning}>
+                  <Truck size={18} />
+                  {assigning ? 'Đang phân công...' : 'Xác nhận phân công'}
+                </button>
+              </form>
+            </section>
+          </>
+        )}
+
+        {batch.status === 'in_transit' && (
+          <section className="rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-700">
+            Lô hàng đã được phân công và đang trong quá trình vận chuyển.
+          </section>
+        )}
 
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <div className="mb-4 flex items-center justify-between">

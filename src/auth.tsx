@@ -16,8 +16,17 @@ export type User = {
 type AuthContextValue = {
   user: User | null;
   login: (email: string, password: string, role: UserRole) => Promise<boolean>;
+  registerCustomer: (payload: CustomerRegistrationPayload) => Promise<boolean>;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => void;
+};
+
+export type CustomerRegistrationPayload = {
+  fullName: string;
+  username: string;
+  email: string;
+  phone?: string;
+  password: string;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,6 +62,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: email.trim(),
           password,
           role
+        });
+        storeUser(data.user);
+        setUser(data.user);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    registerCustomer: async (payload) => {
+      if (!payload.fullName.trim() || !payload.username.trim() || !payload.email.trim() || !payload.password.trim()) return false;
+      try {
+        const { data } = await api.post<{ user: User }>('/auth/register-customer', {
+          fullName: payload.fullName.trim(),
+          username: payload.username.trim(),
+          email: payload.email.trim(),
+          phone: payload.phone?.trim() ?? '',
+          password: payload.password
         });
         storeUser(data.user);
         setUser(data.user);

@@ -16,8 +16,17 @@ type BackendQrCode = {
 };
 
 type BackendPartner = {
+  partnerId?: number;
   partnerName?: string | null;
   address?: string | null;
+  contactPerson?: string | null;
+};
+
+type BackendAccount = {
+  accountId: number;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
 };
 
 type BackendCertificate = {
@@ -52,6 +61,15 @@ type BackendBatch = {
 };
 
 type BackendCheckpoint = {
+  checkpointId: number;
+  transportId?: number | null;
+  sequence: number;
+  locationName?: string | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  temperature?: string | number | null;
+  statusAtCheckpoint?: string | null;
+  note?: string | null;
   reportedAt?: string | null;
 };
 
@@ -64,6 +82,9 @@ type BackendTransportIncident = {
 type BackendTransport = {
   transportId: number;
   transportStatus?: string | null;
+  driverName?: string | null;
+  licensePlate?: string | null;
+  actualDeparture?: string | null;
   actualArrival?: string | null;
   createdAt?: string | null;
   batch?: BackendBatch | null;
@@ -82,12 +103,13 @@ type BackendIncident = {
   createdAt?: string | null;
   batch?: BackendBatch | null;
   transport?: {
+    transportStatus?: string | null;
     shipperPartner?: BackendPartner | null;
     receiverPartner?: BackendPartner | null;
   } | null;
 };
 
-export type StoreDeliveryStatus = 'Arrived' | 'Arriving' | 'Issue';
+export type StoreDeliveryStatus = 'Pending' | 'Arrived' | 'Issue';
 
 export type StoreDelivery = {
   id: string;
@@ -110,6 +132,60 @@ export type StoreIssue = {
   status: string;
   description: string;
   imageUrl: string;
+};
+
+export type TransportCheckpointPayload = {
+  locationName?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  temperature?: number | null;
+  statusAtCheckpoint: string;
+  note?: string;
+  arrivedWarehouse?: boolean;
+};
+
+export type TransportCheckpointRecord = {
+  id: string;
+  transportId: string;
+  sequence: number;
+  locationName: string;
+  latitude: number | null;
+  longitude: number | null;
+  temperature: number | null;
+  statusAtCheckpoint: string;
+  note: string;
+  reportedAt: string;
+  updated: boolean;
+};
+
+export type TransporterTransport = {
+  id: string;
+  batchCode: string;
+  product: string;
+  route: string;
+  status: string;
+  driverName: string;
+  licensePlate: string;
+  checkpoints: TransportCheckpointRecord[];
+};
+
+export type DeliveryStaff = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+};
+
+export type DestinationStore = {
+  id: string;
+  name: string;
+  address: string;
+  contactPerson: string;
+};
+
+export type AssignTransportPayload = {
+  driverAccountId: string;
+  receiverPartnerId: string;
 };
 
 const statusMap: Record<string, BatchStatus> = {
@@ -195,9 +271,9 @@ function formatProduct(batch?: BackendBatch | null) {
 }
 
 function mapDeliveryStatus(item: BackendTransport): StoreDeliveryStatus {
-  if (item.transportStatus === 'ARRIVED_WAREHOUSE' || item.transportStatus === 'DELIVERED') return 'Arrived';
+  if (item.transportStatus === 'DELIVERED') return 'Arrived';
   if (item.incidents?.some((incident) => incident.incidentType !== 'OTHER' || Number(incident.quantityAffected) > 0)) return 'Issue';
-  return 'Arriving';
+  return 'Pending';
 }
 
 function mapStoreDelivery(item: BackendTransport): StoreDelivery {
@@ -232,8 +308,77 @@ function mapStoreIssue(item: BackendIncident): StoreIssue {
     reportedAt: formatDateTime(item.createdAt),
     status: 'Cần xử lý',
     description: item.description ?? 'Chưa có mô tả chi tiết.',
-    imageUrl: item.photoPath ?? 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 640 360%22%3E%3Crect width=%22640%22 height=%22360%22 fill=%22%23fee2e2%22/%3E%3Cpath d=%22M170 139h300M170 183h230M170 227h270%22 stroke=%22%2394a3b8%22 stroke-width=%2216%22 stroke-linecap=%22round%22/%3E%3Ccircle cx=%22508%22 cy=%22276%22 r=%2230%22 fill=%22%23ef4444%22/%3E%3C/svg%3E'
+    imageUrl: item.photoPath ?? ''
   };
+}
+
+const transportStatusLabels: Record<string, string> = {
+  PENDING_PICKUP: 'Chờ nhận hàng',
+  IN_TRANSIT: 'Đang vận chuyển',
+  ARRIVED_WAREHOUSE: 'Đã đến kho',
+  DELIVERED: 'Đã giao'
+};
+
+function numberOrNull(value?: string | number | null) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mapCheckpoint(item: BackendCheckpoint): TransportCheckpointRecord {
+  const status = item.statusAtCheckpoint?.trim() ?? '';
+
+  return {
+    id: String(item.checkpointId),
+    transportId: String(item.transportId ?? ''),
+    sequence: item.sequence,
+    locationName: item.locationName ?? `CP-${String(item.sequence).padStart(2, '0')}`,
+    latitude: numberOrNull(item.latitude),
+    longitude: numberOrNull(item.longitude),
+    temperature: numberOrNull(item.temperature),
+    statusAtCheckpoint: status || 'Chưa cập nhật',
+    note: item.note ?? '',
+    reportedAt: formatDateTime(item.reportedAt),
+    updated: Boolean(status)
+  };
+}
+
+function mapTransporterTransport(item: BackendTransport): TransporterTransport {
+  const shipper = item.shipperPartner?.partnerName ?? 'Chưa cập nhật';
+  const receiver = item.receiverPartner?.partnerName ?? 'Chưa cập nhật';
+
+  return {
+    id: String(item.transportId),
+    batchCode: item.batch?.batchCode ?? `TR-${item.transportId}`,
+    product: formatProduct(item.batch),
+    route: `${shipper} → ${receiver}`,
+    status: transportStatusLabels[item.transportStatus ?? ''] ?? item.transportStatus ?? 'Chưa cập nhật',
+    driverName: item.driverName ?? 'Chưa cập nhật',
+    licensePlate: item.licensePlate ?? 'Chưa cập nhật',
+    checkpoints: item.checkpoints?.map(mapCheckpoint) ?? []
+  };
+}
+
+function mapDeliveryStaff(item: BackendAccount): DeliveryStaff {
+  return {
+    id: String(item.accountId),
+    fullName: item.fullName,
+    email: item.email ?? '',
+    phone: item.phone ?? ''
+  };
+}
+
+function mapDestinationStore(item: BackendPartner): DestinationStore {
+  return {
+    id: String(item.partnerId ?? ''),
+    name: item.partnerName ?? 'Cửa hàng chưa đặt tên',
+    address: item.address ?? 'Chưa cập nhật địa chỉ',
+    contactPerson: item.contactPerson ?? ''
+  };
+}
+
+function normalizePersonName(value: string) {
+  return value.trim().toLocaleLowerCase('vi-VN');
 }
 
 function certificatePayload(cert: Omit<Certificate, 'id'> | Certificate) {
@@ -273,6 +418,22 @@ export async function createBatchRecord(batch: Batch) {
   return mapBatch(data);
 }
 
+export async function updateBatchRecord(currentBatchCode: string, batch: Batch) {
+  const { data } = await api.put<BackendBatch>(`/batches/${encodeURIComponent(currentBatchCode)}`, {
+    batchCode: batch.batchCode,
+    productName: batch.productName,
+    productType: batch.productType,
+    quantity: batch.quantity,
+    harvestDate: batch.harvestDate,
+    expiryDate: batch.expiryDate,
+    status: batch.status,
+    location: batch.location,
+    notes: batch.notes
+  });
+
+  return mapBatch(data);
+}
+
 export async function createCertificateForBatch(batchCode: string, cert: Omit<Certificate, 'id'>) {
   await api.post(`/batches/${encodeURIComponent(batchCode)}/certificates`, certificatePayload(cert));
   return getBatchByCode(batchCode);
@@ -288,9 +449,66 @@ export async function deleteCertificateFromBatch(batchCode: string, certificateI
   return getBatchByCode(batchCode);
 }
 
-export async function getStoreDeliveries() {
-  const { data } = await api.get<BackendTransport[]>('/store/deliveries');
-  return data.map(mapStoreDelivery);
+export async function getDeliveryStaff() {
+  const { data } = await api.get<BackendAccount[]>('/transporters');
+  return data.map(mapDeliveryStaff);
+}
+
+export async function getDestinationStores() {
+  const { data } = await api.get<BackendPartner[]>('/stores');
+  return data.map(mapDestinationStore).filter((store) => store.id);
+}
+
+export async function assignBatchTransport(batchCode: string, payload: AssignTransportPayload) {
+  const { data } = await api.post<BackendTransport>(`/batches/${encodeURIComponent(batchCode)}/assign-transport`, payload);
+
+  if (!data.batch) throw new Error('Assigned transport did not include batch data');
+  return mapBatch(data.batch);
+}
+
+export async function getStoreDeliveries(status?: 'pending' | 'delivered') {
+  const { data } = await api.get<BackendTransport[]>('/store/deliveries', {
+    params: status ? { status } : undefined
+  });
+  const filtered = status === 'pending'
+    ? data.filter((item) => item.transportStatus === 'ARRIVED_WAREHOUSE' && !item.incidents?.length)
+    : status === 'delivered'
+      ? data.filter((item) => item.transportStatus === 'DELIVERED')
+      : data;
+
+  return filtered.map(mapStoreDelivery);
+}
+
+export async function getTransporterTransports(driverName?: string) {
+  const { data } = await api.get<BackendTransport[]>('/transports');
+  const mappedTransports = data.map(mapTransporterTransport);
+  const normalizedDriverName = driverName ? normalizePersonName(driverName) : '';
+
+  if (!normalizedDriverName) return mappedTransports;
+  return mappedTransports.filter((transport) => normalizePersonName(transport.driverName) === normalizedDriverName);
+}
+
+export async function getTransportCheckpoints(transportId: string) {
+  const { data } = await api.get<BackendCheckpoint[]>(`/transports/${encodeURIComponent(transportId)}/checkpoints`);
+  return data.map(mapCheckpoint);
+}
+
+export async function updateTransportCheckpoint(transportId: string, checkpointId: string, payload: TransportCheckpointPayload) {
+  const { data } = await api.put<BackendCheckpoint>(
+    `/transports/${encodeURIComponent(transportId)}/checkpoints/${encodeURIComponent(checkpointId)}`,
+    payload
+  );
+
+  return mapCheckpoint(data);
+}
+
+export async function createTransportCheckpoint(transportId: string, sequence: number, payload: TransportCheckpointPayload) {
+  const { data } = await api.post<BackendCheckpoint>(
+    `/transports/${encodeURIComponent(transportId)}/checkpoints`,
+    { sequence, ...payload }
+  );
+
+  return mapCheckpoint(data);
 }
 
 export async function confirmStoreDelivery(batchCode: string, accountId?: string) {
@@ -303,5 +521,20 @@ export async function confirmStoreDelivery(batchCode: string, accountId?: string
 
 export async function getStoreIssues() {
   const { data } = await api.get<BackendIncident[]>('/store/issues');
-  return data.map(mapStoreIssue);
+  return data
+    .filter((item) => item.transport?.transportStatus !== 'DELIVERED')
+    .map(mapStoreIssue);
+}
+
+export type StoreIssuePayload = {
+  accountId?: string;
+  incidentType: 'DAMAGED' | 'MISSING' | 'QUALITY_ISSUE' | 'OTHER';
+  description: string;
+  quantityAffected?: number;
+  photoPath?: string;
+};
+
+export async function reportStoreIssue(batchCode: string, payload: StoreIssuePayload) {
+  const { data } = await api.post<BackendIncident>(`/store/deliveries/${encodeURIComponent(batchCode)}/issues`, payload);
+  return mapStoreIssue(data);
 }

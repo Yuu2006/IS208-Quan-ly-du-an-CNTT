@@ -96,9 +96,3 @@ export const batches: Batch[] = [
     notes: 'Ớt chuông ba màu, xuất khẩu chất lượng cao'
   }
 ];
-
-export const deliveries = [
-  { id: '1', batchId: 'BF-2024-0891', product: 'Rau bina hữu cơ - 240 kg', supplier: 'Green Valley Farm', eta: 'Đã đến 09:12', status: 'Arrived' },
-  { id: '2', batchId: 'BF-2024-0892', product: 'Cà chua Roma - 180 kg', supplier: 'Sunrise Harvest Co.', eta: 'Dự kiến: 11:30', status: 'Arriving' },
-  { id: '3', batchId: 'BF-2024-0888', product: 'Ớt chuông - 95 kg', supplier: 'Delta Agro Ltd.', eta: 'Đã đến 07:45', status: 'Issue' }
-] as const;

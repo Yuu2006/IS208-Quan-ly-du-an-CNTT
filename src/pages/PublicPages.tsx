@@ -189,20 +189,54 @@ function loadHtmlImageFromFile(file: File): Promise<{ image: HTMLImageElement; c
 }
 
 export function Login() {
-  const { login } = useAuth();
+  const { login, registerCustomer } = useAuth();
   const navigate = useNavigate();
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [registerForm, setRegisterForm] = useState({
+    fullName: '',
+    username: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  function updateRegisterField(name: keyof typeof registerForm, value: string) {
+    setRegisterForm((current) => ({ ...current, [name]: value }));
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError('');
     setLoading(true);
     api.defaults.headers.common['X-Client'] = 'frontend-web';
+
+    if (mode === 'register') {
+      if (registerForm.password !== registerForm.confirmPassword) {
+        setLoading(false);
+        setError('Mật khẩu xác nhận chưa khớp.');
+        return;
+      }
+
+      const ok = await registerCustomer({
+        fullName: registerForm.fullName,
+        username: registerForm.username,
+        email: registerForm.email,
+        phone: registerForm.phone,
+        password: registerForm.password
+      });
+      setLoading(false);
+      if (ok) navigate('/inspector', { replace: true });
+      else setError('Không thể đăng ký. Tên đăng nhập hoặc email có thể đã tồn tại.');
+      return;
+    }
+
     let matchedRole: UserRole | null = null;
     for (const candidateRole of ['inspector', 'farm', 'store', 'transporter'] as UserRole[]) {
       const ok = await login(email, password, candidateRole);
@@ -217,7 +251,7 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-[radial-gradient(circle_at_80%_10%,#e4f7ff_0,#fff_38%,#f7fbff_100%)] px-6 py-10">
+    <div className="flex min-h-full flex-col overflow-y-auto bg-[radial-gradient(circle_at_80%_10%,#e4f7ff_0,#fff_38%,#f7fbff_100%)] px-6 py-10">
       <Link to="/" className="icon-btn absolute left-5 top-5" aria-label="Quay lại trang quét mã">
         <ChevronLeft size={22} />
       </Link>
@@ -226,42 +260,85 @@ export function Login() {
           <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[22px] bg-gradient-to-br from-primary to-primaryDark text-white shadow-[0_16px_38px_rgba(14,165,233,.28)]">
             <Leaf size={34} fill="white" strokeWidth={1.6} />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-[0] text-ink">DIGITAL TRAVEL ERP</h1>
+          <h1 className="text-2xl font-extrabold tracking-[0] text-ink">BLUEFOOD</h1>
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary">Phân quyền truy xuất chuỗi cung ứng</p>
         </div>
 
         <form onSubmit={submit} className="rounded-2xl border border-sky-100 bg-white/82 p-5 shadow-card backdrop-blur">
-          <div className="mb-5 text-center">
-            <h2 className="text-base font-bold text-ink">Đăng nhập hệ thống</h2>
-            <p className="mt-1 text-xs text-muted">Nhập thông tin đăng nhập để mở chức năng được cấp quyền.</p>
+          <div className="mb-5">
+            <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-extrabold">
+              <button type="button" className={`min-h-10 rounded-lg ${mode === 'login' ? 'bg-white text-primary shadow-card' : 'text-muted'}`} onClick={() => { setMode('login'); setError(''); }}>Đăng nhập</button>
+              <button type="button" className={`min-h-10 rounded-lg ${mode === 'register' ? 'bg-white text-primary shadow-card' : 'text-muted'}`} onClick={() => { setMode('register'); setError(''); }}>Đăng ký</button>
+            </div>
           </div>
-          <label className="form-label">Email hoặc mã khách hàng</label>
-          <div className="field">
-            <User size={18} />
-              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Ví dụ: khachhang01" autoComplete="username" />
-          </div>
-          <label className="form-label">Mật khẩu</label>
-          <div className="field">
-            <Lock size={18} />
-            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Nhập mật khẩu..." type={show ? 'text' : 'password'} autoComplete="current-password" />
-            <button type="button" className="text-muted" onClick={() => setShow((value) => !value)} aria-label="Ẩn hiện mật khẩu">
-              {show ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
-          </div>
-          <div className="mb-4 flex items-center justify-between text-xs">
-            <label className="flex items-center gap-2 text-muted">
-              <input checked={remember} onChange={(e) => setRemember(e.target.checked)} type="checkbox" className="h-4 w-4 rounded border-line text-primary" />
-              Ghi nhớ tài khoản
-            </label>
-            <button className="font-semibold text-slate-600" type="button">Quên mật khẩu?</button>
-          </div>
+
+          {mode === 'login' ? (
+            <>
+              <label className="form-label">Tên đăng nhập</label>
+              <div className="field">
+                <User size={18} />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Ví dụ: khachhang01" autoComplete="username" />
+              </div>
+              <label className="form-label">Mật khẩu</label>
+              <div className="field">
+                <Lock size={18} />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Nhập mật khẩu..." type={show ? 'text' : 'password'} autoComplete="current-password" />
+                <button type="button" className="text-muted" onClick={() => setShow((value) => !value)} aria-label="Ẩn hiện mật khẩu">
+                  {show ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+              <div className="mb-4 flex items-center justify-between text-xs">
+                <label className="flex items-center gap-2 text-muted">
+                  <input checked={remember} onChange={(e) => setRemember(e.target.checked)} type="checkbox" className="h-4 w-4 rounded border-line text-primary" />
+                  Ghi nhớ tài khoản
+                </label>
+                <button className="font-semibold text-slate-600" type="button">Quên mật khẩu?</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="form-label">Họ tên khách hàng</label>
+              <div className="field">
+                <User size={18} />
+                <input value={registerForm.fullName} onChange={(e) => updateRegisterField('fullName', e.target.value)} placeholder="Nguyễn Văn An" autoComplete="name" />
+              </div>
+              <label className="form-label">Tên đăng nhập</label>
+              <div className="field">
+                <UserCircle size={18} />
+                <input value={registerForm.username} onChange={(e) => updateRegisterField('username', e.target.value)} placeholder="khachhang01" autoComplete="username" />
+              </div>
+              <label className="form-label">Email</label>
+              <div className="field">
+                <User size={18} />
+                <input value={registerForm.email} onChange={(e) => updateRegisterField('email', e.target.value)} placeholder="email@gmail.com" type="email" autoComplete="email" />
+              </div>
+              <label className="form-label">Số điện thoại</label>
+              <div className="field">
+                <User size={18} />
+                <input value={registerForm.phone} onChange={(e) => updateRegisterField('phone', e.target.value)} placeholder="09000000000" autoComplete="tel" />
+              </div>
+              <label className="form-label">Mật khẩu</label>
+              <div className="field">
+                <Lock size={18} />
+                <input value={registerForm.password} onChange={(e) => updateRegisterField('password', e.target.value)} placeholder="Nhập mật khẩu" type={show ? 'text' : 'password'} autoComplete="new-password" />
+                <button type="button" className="text-muted" onClick={() => setShow((value) => !value)} aria-label="Ẩn hiện mật khẩu">
+                  {show ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+              <label className="form-label">Xác nhận mật khẩu</label>
+              <div className="field mb-4">
+                <Lock size={18} />
+                <input value={registerForm.confirmPassword} onChange={(e) => updateRegisterField('confirmPassword', e.target.value)} placeholder="Nhập lại mật khẩu" type={show ? 'text' : 'password'} autoComplete="new-password" />
+              </div>
+            </>
+          )}
           {error && <div className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-600"><AlertCircle size={15} />{error}</div>}
-          <button className="primary-btn w-full" disabled={loading}>{loading ? 'Đang xử lý...' : 'Đăng Nhập Ngay'}</button>
+          <button className="primary-btn w-full" disabled={loading}>{loading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng Nhập Ngay' : 'Tạo Tài Khoản Khách Hàng'}</button>
         </form>
       </div>
       <footer className="space-y-2 pb-2 text-center text-[11px] text-muted">
         <div className="flex justify-center gap-4"><span>Hỗ trợ</span><span>•</span><span>Bảo mật</span><span>•</span><span>Điều khoản</span></div>
-        <p>© 2026 Digital Travel ERP · v2.4.0</p>
+        <p>© 2026 BlueFood · v2.4.0</p>
       </footer>
     </div>
   );

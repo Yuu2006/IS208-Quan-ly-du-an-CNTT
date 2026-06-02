@@ -68,7 +68,7 @@ export default function App() {
           <Route path="/farm" element={<FarmDashboard batches={farmBatches} />} />
           <Route path="/farm/batches" element={<BatchList batches={farmBatches} />} />
           <Route path="/farm/batches/create" element={<BatchForm onSave={createBatch} />} />
-          <Route path="/farm/batches/:id" element={<BatchDetail batches={farmBatches} onDelete={deleteBatch} onCertificatesChange={updateCertificates} />} />
+          <Route path="/farm/batches/:id" element={<BatchDetail batches={farmBatches} onDelete={deleteBatch} onCertificatesChange={updateCertificates} onTransportAssigned={updateBatch} />} />
           <Route path="/farm/batches/:id/edit" element={<BatchForm batches={farmBatches} onSave={updateBatch} />} />
           <Route path="/transporter" element={<RequireRole role="transporter"><DriverDashboard /></RequireRole>} />
           <Route path="/transporter/checkpoint" element={<RequireRole role="transporter"><TransportCheckpointUpdate /></RequireRole>} />
@@ -81,6 +81,7 @@ export default function App() {
           <Route path="/driver/trip-edit" element={<Navigate to="/transporter/update" replace />} />
           <Route path="/store" element={<RequireRole role="store"><StoreDashboard /></RequireRole>} />
           <Route path="/store/report" element={<RequireRole role="store"><StoreIssueReport /></RequireRole>} />
+          <Route path="/store/report/:id" element={<RequireRole role="store"><StoreIssueReport /></RequireRole>} />
           <Route path="/store/receive/:id" element={<RequireRole role="store"><StoreReceiveDetail /></RequireRole>} />
           <Route path="/store/receipts" element={<RequireRole role="store"><StoreReceiptHistory /></RequireRole>} />
           <Route path="/store/receipts/:id" element={<RequireRole role="store"><StoreReceiptDetail /></RequireRole>} />
