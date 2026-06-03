@@ -245,6 +245,8 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
   const { id } = useParams();
   const navigate = useNavigate();
   const editingBatch = batches.find((item) => item.id === id);
+  const isLockedEdit = Boolean(editingBatch && editingBatch.status !== 'ready');
+  const formTitle = editingBatch ? (isLockedEdit ? 'Xem lô hàng' : 'Sửa lô hàng') : 'Thêm lô hàng';
   const suggestedBatchCode = useMemo(() => editingBatch?.batchCode ?? nextBatchCode(batches), [batches, editingBatch?.batchCode]);
   const [form, setForm] = useState({
     batchCode: suggestedBatchCode,
@@ -303,6 +305,10 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
   async function submit(event: FormEvent) {
     event.preventDefault();
     setFormMessage('');
+    if (isLockedEdit) {
+      setFormMessage('Lô hàng chỉ được cập nhật khi đang ở trạng thái Sẵn sàng.');
+      return;
+    }
     const batchCode = form.batchCode.trim() || suggestedBatchCode;
     const nextBatch: Batch = {
       id: editingBatch?.id ?? createId('batch'),
@@ -354,17 +360,23 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
-      <AppHeader title={editingBatch ? 'Sửa lô hàng' : 'Thêm lô hàng'} subtitle="Thông tin tổng quan lô hàng" back />
+      <AppHeader title={formTitle} subtitle="Thông tin tổng quan lô hàng" back />
       <form onSubmit={submit} className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {isLockedEdit ? (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+            Lô hàng đang ở trạng thái {statusLabels[editingBatch!.status]}. Chỉ lô hàng Sẵn sàng mới được cập nhật thông tin.
+          </section>
+        ) : null}
+
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <label className="form-label">Mã lô hàng</label>
-          <input className="input mb-3" value={form.batchCode} onChange={(e) => updateField('batchCode', e.target.value)} placeholder="BF-2026-0001" />
+          <input className="input mb-3" value={form.batchCode} onChange={(e) => updateField('batchCode', e.target.value)} placeholder="BF-2026-0001" disabled={isLockedEdit} />
           <label className="form-label">Tên sản phẩm</label>
-          <input className="input mb-3" value={form.productName} onChange={(e) => updateField('productName', e.target.value)} placeholder="Cà chua hữu cơ" />
+          <input className="input mb-3" value={form.productName} onChange={(e) => updateField('productName', e.target.value)} placeholder="Cà chua hữu cơ" disabled={isLockedEdit} />
           <label className="form-label">Loại sản phẩm</label>
-          <input className="input mb-3" value={form.productType} onChange={(e) => updateField('productType', e.target.value)} placeholder="Rau củ quả" />
+          <input className="input mb-3" value={form.productType} onChange={(e) => updateField('productType', e.target.value)} placeholder="Rau củ quả" disabled={isLockedEdit} />
           <label className="form-label">Số lượng (kg)</label>
-          <input className="input mb-3" type="number" min="0" value={form.quantity} onChange={(e) => updateField('quantity', e.target.value)} placeholder="250" />
+          <input className="input mb-3" type="number" min="0" value={form.quantity} onChange={(e) => updateField('quantity', e.target.value)} placeholder="250" disabled={isLockedEdit} />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="form-label">Ngày thu hoạch</label>
@@ -373,6 +385,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
                 type="date"
                 value={toDateInputValue(form.harvestDate)}
                 onChange={(e) => updateField('harvestDate', fromDateInputValue(e.target.value))}
+                disabled={isLockedEdit}
               />
             </div>
             <div>
@@ -383,6 +396,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
                 min={toDateInputValue(form.harvestDate)}
                 value={toDateInputValue(form.expiryDate)}
                 onChange={(e) => updateField('expiryDate', fromDateInputValue(e.target.value))}
+                disabled={isLockedEdit}
               />
             </div>
           </div>
@@ -390,7 +404,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
 
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <label className="form-label">Trạng thái</label>
-          <select className="input mb-3" value={form.status} onChange={(e) => updateField('status', e.target.value as BatchStatus)}>
+          <select className="input mb-3" value={form.status} onChange={(e) => updateField('status', e.target.value as BatchStatus)} disabled={isLockedEdit}>
             <option value="ready">{statusLabels.ready}</option>
             {editingBatch && <option value="at_warehouse">{statusLabels.at_warehouse}</option>}
             {editingBatch && <option value="in_transit">{statusLabels.in_transit}</option>}
@@ -399,11 +413,11 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
             {editingBatch && <option value="cancelled">{statusLabels.cancelled}</option>}
           </select>
           <label className="form-label">Vị trí nông trại</label>
-          <input className="input mb-3" value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Đà Lạt, Lâm Đồng" />
+          <input className="input mb-3" value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Đà Lạt, Lâm Đồng" disabled={isLockedEdit} />
           <label className="form-label">Ghi chú</label>
-          <textarea className="input mb-3 min-h-24 resize-none py-3" value={form.notes} onChange={(e) => updateField('notes', e.target.value)} placeholder="Mô tả giống cây, điều kiện thu hoạch, đóng gói..." />
+          <textarea className="input mb-3 min-h-24 resize-none py-3" value={form.notes} onChange={(e) => updateField('notes', e.target.value)} placeholder="Mô tả giống cây, điều kiện thu hoạch, đóng gói..." disabled={isLockedEdit} />
           <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-green-100 bg-green-50 px-3 text-sm font-bold text-primary">
-            QR truy xuất sẽ được tự động tạo khi lưu lô hàng
+            {isLockedEdit ? 'QR truy xuất của lô hàng' : 'QR truy xuất sẽ được tự động tạo khi lưu lô hàng'}
             <QrCode size={19} />
           </div>
         </section>
@@ -448,7 +462,14 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
           </div>
         ) : null}
 
-        <button className="primary-btn flex w-full items-center justify-center gap-2" type="submit"><Save size={18} /> Lưu lô hàng</button>
+        {isLockedEdit && editingBatch ? (
+          <Link to={`/farm/batches/${editingBatch.id}`} className="outline-btn flex w-full items-center justify-center gap-2">
+            <ChevronLeft size={18} />
+            Quay lại chi tiết
+          </Link>
+        ) : (
+          <button className="primary-btn flex w-full items-center justify-center gap-2" type="submit"><Save size={18} /> Lưu lô hàng</button>
+        )}
       </form>
     </div>
   );
@@ -477,6 +498,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
   }, [batch, searchTerm]);
   const selectedStore = useMemo(() => destinationStores.find((store) => store.id === assignForm.receiverPartnerId), [assignForm.receiverPartnerId, destinationStores]);
   const selectedStaff = useMemo(() => deliveryStaff.find((staff) => staff.id === assignForm.driverAccountId), [assignForm.driverAccountId, deliveryStaff]);
+  const canModifyBatch = batch?.status === 'ready';
 
   useEffect(() => {
     if (batch?.status !== 'ready') return;
@@ -507,6 +529,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
   if (!batch) return <Navigate to="/farm/batches" replace />;
 
   function chooseCertificateAction(action: CertificateAction) {
+    if (!canModifyBatch) return;
     setCertificateAction(action);
     setUploadMessage('');
     if (action !== 'update') {
@@ -517,6 +540,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
 
   async function saveCertificate(event: FormEvent) {
     event.preventDefault();
+    if (!canModifyBatch) return;
     const nextCert: Certificate = {
       id: editingCertId ?? createId('cert'),
       name: certForm.name.trim() || 'Chứng chỉ mới',
@@ -546,6 +570,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
   }
 
   function editCertificate(cert: Certificate) {
+    if (!canModifyBatch) return;
     setCertificateAction('update');
     setUploadMessage('');
     setEditingCertId(cert.id);
@@ -560,6 +585,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
   }
 
   async function removeCertificate(certId: string) {
+    if (!canModifyBatch) return;
     try {
       const updatedBatch = await deleteCertificateFromBatch(batch.batchCode, certId);
       onCertificatesChange(batch.id, updatedBatch.certifications);
@@ -575,6 +601,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
   }
 
   function handleCertificateFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!canModifyBatch) return;
     const file = event.target.files?.[0];
     if (!file) return;
     const nameFromFile = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
@@ -597,6 +624,10 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
   }
 
   async function removeBatch() {
+    if (!canModifyBatch) {
+      setAssignMessage('Chỉ có thể huỷ lô hàng khi đang ở trạng thái Sẵn sàng.');
+      return;
+    }
     try {
       const cancelledBatch = await cancelBatchRecord(batch.batchCode);
       await onTransportAssigned?.(cancelledBatch);
@@ -636,7 +667,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
 
   return (
     <div className="relative flex min-h-full flex-col bg-paper">
-      <AppHeader title={batch.batchCode} subtitle={batch.productName} back action={<Link to={`/farm/batches/${batch.id}/edit`} className="icon-btn"><Pencil size={19} /></Link>} />
+      <AppHeader title={batch.batchCode} subtitle={batch.productName} back action={canModifyBatch ? <Link to={`/farm/batches/${batch.id}/edit`} className="icon-btn"><Pencil size={19} /></Link> : undefined} />
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
         <div className="rounded-2xl bg-white p-5 shadow-card">
           <div className="mb-3 flex items-start justify-between gap-3">
@@ -783,12 +814,16 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Badge tone={certificateTones[cert.status]}>{certificateLabels[cert.status]}</Badge>
-                    <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-green-100 bg-green-50 text-primary" onClick={() => editCertificate(cert)} aria-label={`Cập nhật ${cert.name}`}>
-                      <Pencil size={16} />
-                    </button>
-                    <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-red-100 bg-red-50 text-red-600" onClick={() => removeCertificate(cert.id)} aria-label={`Xóa ${cert.name}`}>
-                      <Trash2 size={16} />
-                    </button>
+                    {canModifyBatch && (
+                      <>
+                        <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-green-100 bg-green-50 text-primary" onClick={() => editCertificate(cert)} aria-label={`Cập nhật ${cert.name}`}>
+                          <Pencil size={16} />
+                        </button>
+                        <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-red-100 bg-red-50 text-red-600" onClick={() => removeCertificate(cert.id)} aria-label={`Xóa ${cert.name}`}>
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-muted">Cấp: {cert.issuedDate || 'N/A'} · Hết hạn: {cert.expiryDate || 'N/A'}</p>
@@ -799,17 +834,19 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
             {batch.certifications.length > 0 && visibleCertificates.length === 0 && <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-muted">Không tìm thấy chứng chỉ phù hợp.</p>}
           </div>
 
-          <button
-            type="button"
-            onClick={() => chooseCertificateAction('upload')}
-            className="primary-btn mt-4 flex w-full items-center justify-center gap-2"
-          >
-            <Upload size={18} />
-            Tải chứng chỉ
-          </button>
+          {canModifyBatch && (
+            <button
+              type="button"
+              onClick={() => chooseCertificateAction('upload')}
+              className="primary-btn mt-4 flex w-full items-center justify-center gap-2"
+            >
+              <Upload size={18} />
+              Tải chứng chỉ
+            </button>
+          )}
         </section>
 
-        {batch.status === 'ready' && (
+        {canModifyBatch && (
           <button type="button" className="outline-btn flex w-full items-center justify-center gap-2 border-red-200 text-red-600" onClick={removeBatch}><Trash2 size={18} /> Huỷ lô hàng</button>
         )}
       </div>
