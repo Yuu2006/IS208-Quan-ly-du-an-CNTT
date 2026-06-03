@@ -44,8 +44,8 @@ import {
   UserCircle,
   X
 } from 'lucide-react';
-import { UserRole, useAuth } from '../auth';
-import { api, getBatchByCode } from '../api';
+import { useAuth } from '../auth';
+import { api, getPublicTraceBatch } from '../api';
 import { Batch, Certificate } from '../data';
 import { AppHeader, Badge, Metric, ProfileRow, TimelineItem, certificateLabels, certificateTones, roleHome } from '../shared/ui';
 
@@ -237,16 +237,9 @@ export function Login() {
       return;
     }
 
-    let matchedRole: UserRole | null = null;
-    for (const candidateRole of ['inspector', 'farm', 'store', 'transporter'] as UserRole[]) {
-      const ok = await login(email, password, candidateRole);
-      if (ok) {
-        matchedRole = candidateRole;
-        break;
-      }
-    }
+    const ok = await login(email, password);
     setLoading(false);
-    if (matchedRole) navigate(roleHome[matchedRole], { replace: true });
+    if (ok) navigate('/', { replace: true });
     else setError('Vui lòng kiểm tra email hoặc mật khẩu.');
   }
 
@@ -257,8 +250,8 @@ export function Login() {
       </Link>
       <div className="flex flex-1 flex-col justify-center">
         <div className="mb-7 text-center">
-          <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[22px] bg-gradient-to-br from-primary to-primaryDark text-white shadow-[0_16px_38px_rgba(14,165,233,.28)]">
-            <Leaf size={34} fill="white" strokeWidth={1.6} />
+          <div className="mx-auto mb-4 flex h-16 w-16 shrink-0 items-center justify-center rounded-[22px] bg-green-50 border border-green-200 text-green-700">
+            <Leaf size={38} strokeWidth={1.8} />
           </div>
           <h1 className="text-2xl font-extrabold tracking-[0] text-ink">BLUEFOOD</h1>
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary">Phân quyền truy xuất chuỗi cung ứng</p>
@@ -557,7 +550,7 @@ export function Trace() {
     setFetchedBatch(null);
     setSelectedCertificate(null);
 
-    getBatchByCode(traceId)
+    getPublicTraceBatch(traceId)
       .then((item) => {
         if (active) setFetchedBatch(item);
       })

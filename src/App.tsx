@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider } from './auth';
+import { AuthProvider, useAuth } from './auth';
 import { getBatches } from './api';
 import { Batch, Certificate, batches as sampleBatches } from './data';
 import { PhoneFrame, RequireRole } from './shared/ui';
@@ -11,11 +11,18 @@ import { BatchDetail, BatchForm, BatchList, FarmDashboard } from './roles/farm/F
 import { DriverDashboard, TransportCheckpointUpdate } from './roles/transporter/TransporterPages';
 import { StoreDashboard, StoreIssueDetail, StoreIssueHistory, StoreIssueReport, StoreReceiptDetail, StoreReceiptHistory, StoreReceiveDetail } from './roles/store/StorePages';
 
-export default function App() {
+function AppContent() {
+  const { user } = useAuth();
   const [farmBatches, setFarmBatches] = useState<Batch[]>(sampleBatches);
   const [apiBatches, setApiBatches] = useState<Batch[]>([]);
 
   useEffect(() => {
+    if (!user || (user.role !== 'farm' && user.role !== 'inspector')) {
+      setApiBatches([]);
+      setFarmBatches(sampleBatches);
+      return;
+    }
+
     let active = true;
 
     getBatches()
@@ -35,7 +42,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.id, user?.role]);
 
   function createBatch(batch: Batch) {
     setFarmBatches((items) => [batch, ...items]);
@@ -54,8 +61,7 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <PhoneFrame>
+    <PhoneFrame>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/auth/login" element={<Login />} />
@@ -65,11 +71,11 @@ export default function App() {
           <Route path="/inspector/history" element={<RequireRole role="inspector"><ScanHistory batches={apiBatches} /></RequireRole>} />
           <Route path="/customer" element={<Navigate to="/inspector" replace />} />
           <Route path="/customer/history" element={<Navigate to="/inspector/history" replace />} />
-          <Route path="/farm" element={<FarmDashboard batches={farmBatches} />} />
-          <Route path="/farm/batches" element={<BatchList batches={farmBatches} />} />
-          <Route path="/farm/batches/create" element={<BatchForm onSave={createBatch} />} />
-          <Route path="/farm/batches/:id" element={<BatchDetail batches={farmBatches} onDelete={deleteBatch} onCertificatesChange={updateCertificates} onTransportAssigned={updateBatch} />} />
-          <Route path="/farm/batches/:id/edit" element={<BatchForm batches={farmBatches} onSave={updateBatch} />} />
+          <Route path="/farm" element={<RequireRole role="farm"><FarmDashboard batches={farmBatches} /></RequireRole>} />
+          <Route path="/farm/batches" element={<RequireRole role="farm"><BatchList batches={farmBatches} /></RequireRole>} />
+          <Route path="/farm/batches/create" element={<RequireRole role="farm"><BatchForm onSave={createBatch} /></RequireRole>} />
+          <Route path="/farm/batches/:id" element={<RequireRole role="farm"><BatchDetail batches={farmBatches} onDelete={deleteBatch} onCertificatesChange={updateCertificates} onTransportAssigned={updateBatch} /></RequireRole>} />
+          <Route path="/farm/batches/:id/edit" element={<RequireRole role="farm"><BatchForm batches={farmBatches} onSave={updateBatch} /></RequireRole>} />
           <Route path="/transporter" element={<RequireRole role="transporter"><DriverDashboard /></RequireRole>} />
           <Route path="/transporter/checkpoint" element={<RequireRole role="transporter"><TransportCheckpointUpdate /></RequireRole>} />
           <Route path="/transporter/update" element={<RequireRole role="transporter"><TransportCheckpointUpdate /></RequireRole>} />
@@ -91,6 +97,13 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PhoneFrame>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
     </AuthProvider>
   );
 }

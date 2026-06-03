@@ -15,7 +15,7 @@ export type User = {
 
 type AuthContextValue = {
   user: User | null;
-  login: (email: string, password: string, role: UserRole) => Promise<boolean>;
+  login: (email: string, password: string, role?: UserRole) => Promise<boolean>;
   registerCustomer: (payload: CustomerRegistrationPayload) => Promise<boolean>;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => void;
@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await api.post<{ user: User }>('/auth/login', {
           email: email.trim(),
           password,
-          role
+          ...(role ? { role } : {})
         });
         storeUser(data.user);
         setUser(data.user);

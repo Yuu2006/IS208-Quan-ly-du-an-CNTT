@@ -9,6 +9,24 @@ export const api = axios.create({
   }
 });
 
+const AUTH_STORAGE_KEY = 'bluefood.auth.user';
+
+api.interceptors.request.use((config) => {
+  try {
+    const rawUser = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    const user = rawUser ? JSON.parse(rawUser) as { id?: string } : null;
+
+    if (user?.id) {
+      config.headers = config.headers ?? {};
+      (config.headers as Record<string, string>)['x-account-id'] = user.id;
+    }
+  } catch {
+    // Continue without auth header when local storage is unavailable or malformed.
+  }
+
+  return config;
+});
+
 type BackendQrCode = {
   qrId: number;
   qrImagePath?: string | null;
@@ -107,6 +125,16 @@ type BackendIncident = {
     shipperPartner?: BackendPartner | null;
     receiverPartner?: BackendPartner | null;
   } | null;
+};
+
+type BackendPublicTrace = {
+  batch: BackendBatch;
+  origin?: BackendPartner | null;
+  certificates?: BackendCertificate[];
+  qr?: {
+    traceToken?: string | null;
+    status?: string | null;
+  };
 };
 
 export type StoreDeliveryStatus = 'Pending' | 'Arrived' | 'Issue';
@@ -400,6 +428,21 @@ export async function getBatches() {
 export async function getBatchByCode(batchCode: string) {
   const { data } = await api.get<BackendBatch>(`/batches/${encodeURIComponent(batchCode)}`);
   return mapBatch(data);
+}
+
+export async function getPublicTraceBatch(traceToken: string) {
+  const { data } = await api.get<BackendPublicTrace>(`/trace/${encodeURIComponent(traceToken)}`);
+
+  return mapBatch({
+    ...data.batch,
+    farmPartner: data.origin,
+    certificates: data.certificates?.map((certificate) => ({ certificate })) ?? [],
+    qrCode: {
+      qrId: 0,
+      qrImagePath: data.qr?.traceToken ? `/trace/${data.qr.traceToken}` : null,
+      status: data.qr?.status ?? 'ACTIVE'
+    }
+  });
 }
 
 export async function createBatchRecord(batch: Batch) {

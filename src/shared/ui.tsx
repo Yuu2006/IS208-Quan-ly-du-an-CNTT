@@ -111,7 +111,7 @@ export function AppHeader({ title, subtitle, icon, back = false, action }: { tit
               <ChevronLeft size={21} />
             </button>
           ) : icon ? (
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-primary">{icon}</div>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-green-50 border border-green-200 text-green-700">{icon}</div>
           ) : null}
           <div className="min-w-0">
             <h1 className="truncate text-lg font-bold text-ink">{title}</h1>
