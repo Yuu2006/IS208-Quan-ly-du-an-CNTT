@@ -197,9 +197,11 @@ function normalizeCertificateStatus(value: unknown) {
 }
 
 function normalizeBatchStatus(value: unknown) {
-  if (value === "ready") return PrismaBatchStatus.AT_WAREHOUSE;
+  if (value === "ready" || value === "draft") return PrismaBatchStatus.CREATED;
+  if (value === "at_warehouse") return PrismaBatchStatus.AT_WAREHOUSE;
   if (value === "in_transit") return PrismaBatchStatus.IN_TRANSIT;
   if (value === "delivered") return PrismaBatchStatus.DELIVERED;
+  if (value === "incident_reported") return PrismaBatchStatus.INCIDENT_REPORTED;
   if (value === "cancelled") return PrismaBatchStatus.CANCELLED;
   return PrismaBatchStatus.CREATED;
 }
@@ -1262,7 +1264,10 @@ apiRouter.put("/batches/:batchCode", authenticate, requireRole("ADMIN", "FARMER"
 
     const existingBatch = await prisma.batch.findUnique({
       where: { batchCode: paramText(req.params.batchCode) },
-      include: buildBatchInclude(),
+      include: {
+        ...buildBatchInclude(),
+        transport: { select: { transportId: true } },
+      },
     });
 
     if (!existingBatch) {
@@ -1324,6 +1329,69 @@ apiRouter.put("/batches/:batchCode", authenticate, requireRole("ADMIN", "FARMER"
     });
 
     res.json(jsonSafe(updatedBatch));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Cancels a batch that has not been assigned to transport yet. */
+apiRouter.delete("/batches/:batchCode", authenticate, requireRole("ADMIN", "FARMER"), async (req: RequestWithUser, res, next) => {
+  try {
+    const existingBatch = await prisma.batch.findUnique({
+      where: { batchCode: paramText(req.params.batchCode) },
+      include: {
+        ...buildBatchInclude(),
+        transport: { select: { transportId: true } },
+      },
+    });
+
+    if (!existingBatch) {
+      res.status(404).json({ message: "Batch not found" });
+      return;
+    }
+
+    if (!isAdmin(req.currentUser) && existingBatch.farmPartnerId !== req.currentUser?.partnerId) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    if (existingBatch.transport) {
+      res.status(409).json({ message: "Only batches without transport assignment can be cancelled" });
+      return;
+    }
+
+    if (existingBatch.status !== PrismaBatchStatus.CREATED) {
+      res.status(409).json({ message: "Only ready batches can be cancelled" });
+      return;
+    }
+
+    const cancelledBatch = await prisma.$transaction(async (tx) => {
+      const nextBatch = await tx.batch.update({
+        where: { batchId: existingBatch.batchId },
+        data: { status: PrismaBatchStatus.CANCELLED },
+        include: buildBatchInclude(),
+      });
+
+      await appendBatchStatusHistory(tx, {
+        batchId: existingBatch.batchId,
+        status: PrismaBatchStatus.CANCELLED,
+        locationName: existingBatch.farmPartner?.partnerName ?? existingBatch.farmPartner?.address ?? null,
+        note: "Batch cancelled before transport assignment",
+        changedBy: req.currentUser?.accountId ?? null,
+      });
+
+      await appendAuditLog(tx, auditContextFromRequest(req), {
+        action: "BATCH_CANCELLED",
+        objectType: "BATCH",
+        objectId: existingBatch.batchId,
+        oldValue: existingBatch,
+        newValue: nextBatch,
+      });
+
+      return nextBatch;
+    });
+
+    res.json(jsonSafe(cancelledBatch));
   } catch (error) {
     next(error);
   }
@@ -1649,7 +1717,11 @@ apiRouter.post("/batches/:batchCode/assign-transport", authenticate, requireRole
       return;
     }
 
-    if (batch.status !== PrismaBatchStatus.AT_WAREHOUSE && batch.status !== PrismaBatchStatus.IN_TRANSIT) {
+    if (
+      batch.status !== PrismaBatchStatus.CREATED
+      && batch.status !== PrismaBatchStatus.AT_WAREHOUSE
+      && batch.status !== PrismaBatchStatus.IN_TRANSIT
+    ) {
       res.status(409).json({ message: "Batch must be ready before assigning transport" });
       return;
     }
@@ -1893,9 +1965,17 @@ apiRouter.post("/transports/:transportId/checkpoints", authenticate, requireRole
         });
 
         if (transport.batchId) {
+          await tx.batch.update({
+            where: { batchId: transport.batchId },
+            data: {
+              status: PrismaBatchStatus.AT_WAREHOUSE,
+              currentLocationPartnerId: transport.storePartnerId ?? transport.receiverPartnerId ?? null,
+            },
+          });
+
           await appendBatchStatusHistory(tx, {
             batchId: transport.batchId,
-            status: PrismaBatchStatus.IN_TRANSIT,
+            status: PrismaBatchStatus.AT_WAREHOUSE,
             locationName: createdCheckpoint.locationName,
             note: "Transport checkpoint arrived",
             changedBy: req.currentUser?.accountId ?? null,
@@ -1936,7 +2016,12 @@ apiRouter.put("/transports/:transportId/checkpoints/:checkpointId", authenticate
         transportId,
         ...transportWhereForUser(req.currentUser),
       },
-      select: { transportId: true, batchId: true },
+      select: {
+        transportId: true,
+        batchId: true,
+        storePartnerId: true,
+        receiverPartnerId: true,
+      },
     });
 
     if (!transport) {
@@ -1986,9 +2071,17 @@ apiRouter.put("/transports/:transportId/checkpoints/:checkpointId", authenticate
         });
 
         if (transport.batchId) {
+          await tx.batch.update({
+            where: { batchId: transport.batchId },
+            data: {
+              status: PrismaBatchStatus.AT_WAREHOUSE,
+              currentLocationPartnerId: transport.storePartnerId ?? transport.receiverPartnerId ?? null,
+            },
+          });
+
           await appendBatchStatusHistory(tx, {
             batchId: transport.batchId,
-            status: PrismaBatchStatus.IN_TRANSIT,
+            status: PrismaBatchStatus.AT_WAREHOUSE,
             locationName: nextCheckpoint.locationName,
             note: "Transport checkpoint updated",
             changedBy: req.currentUser?.accountId ?? null,
@@ -2008,6 +2101,79 @@ apiRouter.put("/transports/:transportId/checkpoints/:checkpointId", authenticate
     });
 
     res.json(jsonSafe(updatedCheckpoint));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Continues a transport after a warehouse/store checkpoint and moves the batch back in transit. */
+apiRouter.post("/transports/:transportId/continue", authenticate, requireRole("ADMIN", "TRANSPORTER"), async (req: RequestWithUser, res, next) => {
+  try {
+    const transportId = Number(req.params.transportId);
+
+    if (!Number.isInteger(transportId)) {
+      res.status(400).json({ message: "transportId must be an integer" });
+      return;
+    }
+
+    const transport = await prisma.transport.findFirst({
+      where: {
+        transportId,
+        transportStatus: TransportStatus.ARRIVED_WAREHOUSE,
+        ...transportWhereForUser(req.currentUser),
+      },
+      include: {
+        batch: true,
+        transporterPartner: true,
+      },
+    });
+
+    if (!transport) {
+      res.status(404).json({ message: "Transport not found or not waiting at warehouse" });
+      return;
+    }
+
+    const continuedTransport = await prisma.$transaction(async (tx) => {
+      if (transport.batchId) {
+        await tx.batch.update({
+          where: { batchId: transport.batchId },
+          data: {
+            status: PrismaBatchStatus.IN_TRANSIT,
+            currentLocationPartnerId: transport.transporterPartnerId,
+          },
+        });
+
+        await appendBatchStatusHistory(tx, {
+          batchId: transport.batchId,
+          status: PrismaBatchStatus.IN_TRANSIT,
+          locationName: transport.transporterPartner?.partnerName ?? "Transport continued",
+          note: "Transport continued",
+          changedBy: req.currentUser?.accountId ?? null,
+        });
+      }
+
+      const nextTransport = await tx.transport.update({
+        where: { transportId },
+        data: {
+          transportStatus: TransportStatus.IN_TRANSIT,
+          actualDeparture: new Date(),
+          actualArrival: null,
+        },
+        include: buildTransportInclude(),
+      });
+
+      await appendAuditLog(tx, auditContextFromRequest(req), {
+        action: "TRANSPORT_CONTINUED",
+        objectType: "TRANSPORT",
+        objectId: transportId,
+        oldValue: transport,
+        newValue: nextTransport,
+      });
+
+      return nextTransport;
+    });
+
+    res.json(jsonSafe(continuedTransport));
   } catch (error) {
     next(error);
   }
@@ -2210,7 +2376,7 @@ apiRouter.get("/store/issues", authenticate, requireRole("ADMIN", "STORE", "WARE
     const issues = await prisma.incident.findMany({
       where: {
         transport: {
-          transportStatus: TransportStatus.ARRIVED_WAREHOUSE,
+          transportStatus: TransportStatus.INCIDENT_REPORTED,
           ...transportWhereForUser(req.currentUser),
         },
       },
