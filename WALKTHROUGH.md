@@ -1,67 +1,171 @@
-# HƯỚNG DẪN DỰ ÁN & TIẾN ĐỘ THỰC THI (WALKTHROUGH)
+# BlueFood Walkthrough
 
-> 🛑 **QUY ĐỊNH LÀM VIỆC DÀNH CHO TEAM DEV (BẮT BUỘC ĐỌC):**
-> Để đảm bảo tài liệu luôn đồng bộ với code thực tế, mỗi khi hoàn thành một chức năng, bạn **PHẢI THỰC HIỆN 2 BƯỚC SAU** trong cùng một Commit/Pull Request:
-> 1. Đổi dấu `[ ]` thành `[x]` tại task tương ứng trong file `walkthrough.md` này.
-> 2. Mở file `README.md` ra và xem xét cập nhật thêm (Ví dụ: Thêm đường dẫn API mới, cập nhật trạng thái "Đã xong" cho module, thêm thư viện mới vào Tech Stack, hoặc hướng dẫn chạy script mới).
+File này là bản điều phối kỹ thuật hiện tại của repo. Tài liệu nghiệp vụ chi tiết vẫn nằm trong [docs/usecases](docs/usecases), còn checklist triển khai dài nằm trong [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md).
 
----
+## 1. Quy tắc làm việc bắt buộc
 
-# Phase 1 - Khởi động & Nền tảng Kiến trúc (Sprint 0)
-- [x] Khởi tạo dự án Frontend (React.js / Next.js / Vite)
-- [x] Khởi tạo dự án Backend (Node.js / Express.js)
-- [ ] Thiết kế Database schema (PostgreSQL) và quan hệ giữa các bảng.
-- [ ] Dựng khung Layout Dashboard Admin & Cấu hình Routing.
+- [x] Tách repo thành `be`, `fe/admin`, `fe/mobile/app`, `docs`.
+- [x] Có README root mô tả setup, cấu trúc, scripts và ràng buộc nghiệp vụ.
+- [x] Dùng trực tiếp `.env` thật cho backend, admin web và mobile web.
+- [x] Đã khởi tạo `.env` local: backend từ file local sẵn có, admin/mobile theo cấu hình local.
+- [x] Có root `.gitignore` để loại `.env`, `env`, `node_modules`, build output, log và Prisma generated client.
+- [x] Có root `package.json` điều phối cài đặt/build/dev cho các app.
+- [ ] Không commit credential thật; nếu đã từng đưa secret vào repo, cần rotate credential ở nhà cung cấp database.
+- [ ] Mỗi PR/commit nghiệp vụ phải gắn với UC tương ứng.
+- [ ] Khi thêm/sửa endpoint, cập nhật [be/docs/API_DESIGN.md](be/docs/API_DESIGN.md).
+- [ ] Khi đổi luồng nghiệp vụ, cập nhật file use case trong [docs/usecases](docs/usecases).
+- [ ] Mọi thao tác thay đổi dữ liệu nghiệp vụ quan trọng phải có audit log append-only.
 
-# Phase 2 - Nền tảng cốt lõi, Phân quyền & Audit Log (Increment 1)
-## Account & Partner Management
-- [ ] Module 1: Auth & Tài khoản (UC01-07)
-- [ ] API: Đăng nhập (JWT), Đăng xuất, Phân quyền Role-based (Admin, Nông trại, Vận chuyển...).
-- [ ] Xây dựng UI/UX Màn hình Đăng nhập & Bảng quản lý tài khoản.
-- [ ] API & UI: Quản lý hồ sơ đối tác và luồng duyệt yêu cầu (UC36-40).
+## 2. Ma trận use case và module
 
-## Immutable Audit Log System (Cốt lõi dự án)
-- [ ] Module 2: Audit Log Append-only (UC26-28)
-- [ ] Database Trigger / Log Service: Tự động ghi log mọi thao tác POST/PUT/DELETE.
-- [ ] Xây dựng giao diện tra cứu Log (Chỉ xem, tuyệt đối ẩn/không code nút Xóa, Sửa).
+| Nhóm nghiệp vụ | Use case | Module chính | Hiện trạng |
+| --- | --- | --- | --- |
+| Tài khoản & xác thực | UC01-UC07 | Backend auth/account, admin accounts | Có login/register/customer, danh sách account; thiếu logout/me/đổi mật khẩu/RBAC đầy đủ/audit |
+| Lô hàng | UC08-UC13 | Backend batch, mobile farm, admin shipping | Có list/create/detail theo `batchCode`; thiếu update/cancel đầy đủ và audit |
+| Chứng chỉ | UC14-UC18 | Backend batch certificates, mobile farm | Có gắn/xóa chứng chỉ theo lô; thiếu upload file thật và kiểm soát xóa theo trạng thái đầy đủ |
+| Vận chuyển | UC19-UC25 | Backend transports/store, mobile transporter/store | Có list transport, assign, checkpoint, confirm delivery, report issue; cần chuẩn hóa status/audit/role guard |
+| Audit log | UC26-UC28 | Admin audit, backend audit service | UI mock có màn hình; backend/schema chưa có bảng/service audit append-only đầy đủ |
+| Lịch sử chuỗi cung ứng | UC29-UC31 | QR trace, batch detail, transport history | Có dữ liệu batch/transport/QR nền; cần endpoint trace public tổng hợp theo UC |
+| QR định danh | UC32-UC35 | Backend QR, mobile scanner | Có `GET /api/qr/:qrId` và UI scan; thiếu tạo/in/tải QR đầy đủ, chữ ký/xác thực QR |
+| Hồ sơ đối tác | UC36-UC40 | Backend partners, admin partners | Có list partner/store/transporter; thiếu CRUD/phê duyệt cập nhật/khóa theo giao dịch |
+| Báo cáo & thống kê | UC41-UC45 | Admin reports | UI mock có báo cáo; backend aggregate/export/inventory/expiry alert chưa đầy đủ |
 
-# Phase 3 - Quản lý Lô hàng & Chứng chỉ (Increment 2)
-## Shipment Management
-- [ ] Module 3: Quản lý Lô hàng (UC08-13)
-- [ ] API: Tạo mới (sinh ID duy nhất), Cập nhật sai sót, Hủy lô hàng.
-- [ ] Logic Backend/Frontend: Tự động khóa nút "Sửa/Xóa lô hàng" khi trạng thái chuyển sang "Đã xuất kho".
-- [ ] Xây dựng UI Form nhập liệu (ưu tiên giao diện Mobile/Tablet cho nông trại).
+## 3. Backend
 
-## Certificate Management
-- [ ] Module 4: Quản lý Chứng chỉ (UC14-18)
-- [ ] Cấu hình Local Server Storage / Cloud để upload file PDF/Ảnh chứng chỉ (VietGAP, GlobalGAP).
-- [ ] Xây dựng UI: Upload file, hiển thị danh sách và tải về chứng chỉ.
+### Đã có
 
-# Phase 4 - Vận chuyển, Nhận hàng & Đồng bộ Offline (Increment 3)
-## Logistics & Offline Sync
-- [ ] Module 5: Điều phối Vận chuyển (UC19-23)
-- [ ] API: Tạo đơn vận chuyển, gán tài xế, tài xế check-in GPS/Nhiệt độ tại các trạm.
-- [ ] Xây dựng UI: Nút check-in cho Tài xế, Xác nhận nhận hàng/Báo cáo lỗi cho Cửa hàng (UC24, UC25).
-- [ ] Frontend: Tích hợp Service Worker / IndexedDB để lưu Cache dữ liệu khi mất mạng (chế độ Offline).
-- [ ] Backend API: Bulk-insert để nhận và đồng bộ cục dữ liệu lớn khi thiết bị có Internet trở lại.
+- [x] Express app trong [be/src/app.ts](be/src/app.ts).
+- [x] Server bootstrap và graceful shutdown trong [be/src/server.ts](be/src/server.ts).
+- [x] Prisma schema và migration đầu tiên trong [be/prisma](be/prisma).
+- [x] Prisma client wrapper trong [be/src/lib/prisma.ts](be/src/lib/prisma.ts).
+- [x] API route chính trong [be/src/routes/api.ts](be/src/routes/api.ts).
+- [x] Health check database: `GET /api/health`.
+- [x] Runtime JSON safe cho `bigint`/`Decimal`.
 
-# Phase 5 - QR Code, Truy xuất & Báo cáo (Increment 4)
-## QR Code & Public Traceability
-- [ ] Module 6: QR Code & Truy xuất (UC29-35)
-- [ ] Tích hợp thuật toán sinh mã QR chứa chữ ký xác thực & URL `.../trace/{batch_id}`.
-- [ ] Tích hợp thư viện Web Camera (HTML5) cho chức năng quét mã trực tiếp trên trình duyệt.
-- [ ] Xây dựng UI: Dòng thời gian (Timeline) hiển thị hành trình nguồn gốc cực mượt cho Khách hàng.
-- [ ] Backend: Tích hợp Redis Cache để tối ưu API quét QR, đảm bảo phản hồi < 2 giây.
+### Endpoint hiện có
 
-## Reporting Dashboard
-- [ ] Module 7: Thống kê & Báo cáo (UC41-45)
-- [ ] API & UI: Widget cảnh báo lô hàng sắp hết hạn (cảnh báo đỏ/cam).
-- [ ] Biểu đồ thống kê (UI Support - Chart.js / Recharts): Tồn kho, Số lượt quét QR.
-- [ ] Tích hợp thư viện xuất báo cáo ra file Excel / PDF.
+- [x] `POST /api/auth/login`
+- [x] `POST /api/auth/register-customer`
+- [x] `GET /api/accounts`
+- [x] `GET /api/transporters`
+- [x] `GET /api/stores`
+- [x] `GET /api/partners`
+- [x] `GET /api/batches`
+- [x] `POST /api/batches`
+- [x] `GET /api/batches/:batchCode`
+- [x] `POST /api/batches/:batchCode/certificates`
+- [x] `DELETE /api/batches/:batchCode/certificates/:certificateId`
+- [x] `GET /api/transports`
+- [x] `POST /api/batches/:batchCode/assign-transport`
+- [x] `GET /api/transports/:transportId/checkpoints`
+- [x] `POST /api/transports/:transportId/checkpoints`
+- [x] `GET /api/store/deliveries`
+- [x] `POST /api/store/deliveries/:batchCode/confirm`
+- [x] `POST /api/store/deliveries/:batchCode/issues`
+- [x] `GET /api/store/issues`
+- [x] `GET /api/qr/:qrId`
 
-# Phase 6 - Final Optimization & Release
-- [ ] Refactor code, dọn dẹp các file Mock Data (như `dashboard.json`).
-- [ ] Kiểm thử Bảo mật: Test thử các script cố tình thay đổi Audit Log xem Database có chặn lại không.
-- [ ] Stress test API truy xuất mã QR giả lập chịu tải 100.000 lượt quét.
-- [ ] Đóng gói Docker Compose cho Deployment thực tế (Staging / Production).
-- [ ] Chốt đồ án! 🏁
+### Cần chuẩn hóa tiếp
+
+- [ ] Dời mật khẩu plain-text sang hash an toàn.
+- [ ] Thêm auth token/session, middleware xác thực và phân quyền.
+- [ ] Tách `src/routes/api.ts` thành modules theo domain khi file tiếp tục phình to.
+- [ ] Thêm audit log model/service và chặn update/delete audit log ở tầng DB hoặc privilege.
+- [ ] Chuẩn hóa response envelope theo [be/docs/API_DESIGN.md](be/docs/API_DESIGN.md), hoặc cập nhật design theo implementation nếu chọn response trực tiếp.
+- [ ] Thống nhất base path: implementation đang dùng `/api`, API design đang đề xuất `/api/v1`.
+- [ ] Bổ sung upload file chứng chỉ/ảnh sự cố.
+- [ ] Bổ sung endpoint tạo/in/tải QR và xác thực QR bằng signature/hash.
+- [ ] Thêm seed data phục vụ demo.
+- [ ] Thêm test API cho use case lõi.
+
+## 4. Admin Web
+
+### Đã có
+
+- [x] Vite React TypeScript app trong [fe/admin](fe/admin).
+- [x] Layout chính, sidebar, dashboard và các feature screen.
+- [x] Mock data tại [fe/admin/src/mocks/dashboard.json](fe/admin/src/mocks/dashboard.json).
+- [x] Các màn hình nền: dashboard, accounts, partners, shipping, audit, reports.
+
+### Cần chuẩn hóa tiếp
+
+- [ ] Tích hợp API backend thay cho mock data theo từng module.
+- [ ] Thêm auth guard và role-based navigation.
+- [ ] Hoàn thiện màn hình traceability; file [fe/admin/src/features/traceability/TraceabilityScreen.tsx](fe/admin/src/features/traceability/TraceabilityScreen.tsx) hiện rỗng.
+- [ ] Chuẩn hóa trạng thái loading/error/empty cho mọi màn hình.
+- [ ] Đồng bộ terminology với use case: lô hàng, đối tác, vận chuyển, checkpoint, sự cố, chứng chỉ.
+- [ ] Thêm test component/interaction cho nghiệp vụ quan trọng.
+
+## 5. Mobile Web
+
+### Đã có
+
+- [x] Đổi thư mục chuẩn thành [fe/mobile/app](fe/mobile/app).
+- [x] Vite React Tailwind mobile-first app.
+- [x] Axios client dùng `VITE_API_BASE_URL` trong [fe/mobile/app/src/api.ts](fe/mobile/app/src/api.ts).
+- [x] Route public: landing, login, scanner, trace.
+- [x] Route theo vai trò: farm, transporter, store, inspector.
+- [x] Vite proxy `/api` tới backend local.
+- [x] `basicSsl` để hỗ trợ camera/QR tốt hơn khi chạy local.
+
+### Cần chuẩn hóa tiếp
+
+- [ ] Rà soát và sửa encoding tiếng Việt trong source mobile.
+- [ ] Chuẩn hóa auth/session với backend.
+- [ ] Rà soát fallback mock data khi API lỗi để tránh che lỗi thật ở môi trường staging.
+- [ ] Hoàn thiện trace public theo UC30-UC31.
+- [ ] Hoàn thiện tạo/tải/in QR theo UC33-UC35.
+- [ ] Kiểm tra trải nghiệm camera/QR trên thiết bị thật.
+
+## 6. Database
+
+### Đã có
+
+- [x] Enum role/status chính: account, partner, batch, certificate, transport, incident, QR.
+- [x] Model chính: `Account`, `PartnerProfile`, `Batch`, `Certificate`, `BatchCert`, `Transport`, `TransportCheckpoint`, `Incident`, `QrCode`, `QrScanLog`.
+- [x] Index cơ bản cho khóa ngoại và truy vấn vận hành.
+
+### Cần chuẩn hóa tiếp
+
+- [ ] Bổ sung bảng audit log append-only.
+- [ ] Bổ sung constraint/index phục vụ QR lookup, scan log, batch code và timestamp theo tải mục tiêu.
+- [ ] Chốt chính sách soft-delete/lock cho partner, account, batch, certificate.
+- [ ] Bổ sung migration seed/demo.
+- [ ] Rà soát mapping trạng thái giữa docs, Prisma enum, API và UI.
+
+## 7. Tài liệu
+
+### Đã có
+
+- [x] Tổng danh sách UC01-UC45 trong [docs/usecases/UC_All_Use_Cases.md](docs/usecases/UC_All_Use_Cases.md).
+- [x] Chi tiết account/auth trong [docs/usecases/UC_Account_Management.md](docs/usecases/UC_Account_Management.md).
+- [x] Chi tiết lô hàng và lịch sử chuỗi cung ứng trong [docs/usecases/UC_Shipment_And_History.md](docs/usecases/UC_Shipment_And_History.md).
+- [x] Chi tiết vận chuyển và audit trong [docs/usecases/UC_Shipping_And_Audit.md](docs/usecases/UC_Shipping_And_Audit.md).
+- [x] Chi tiết chứng chỉ/báo cáo trong [docs/usecases/UC_Certificate_And_Reporting.md](docs/usecases/UC_Certificate_And_Reporting.md).
+- [x] Chi tiết QR/đối tác trong [docs/usecases/UC_QR_And_Partner_Management.md](docs/usecases/UC_QR_And_Partner_Management.md).
+- [x] API design trong [be/docs/API_DESIGN.md](be/docs/API_DESIGN.md).
+
+### Cần chuẩn hóa tiếp
+
+- [ ] Rà soát file docs lớn để bỏ ảnh/link hỏng dạng `![][image...]` nếu không có reference ảnh.
+- [ ] Thống nhất mã UC partner/QR/report nếu tài liệu cũ và API design còn lệch số.
+- [ ] Bổ sung ERD/sequence/activity diagram dạng file nguồn có thể sửa.
+- [ ] Bổ sung checklist test case theo UC.
+
+## 8. Lệnh thường dùng
+
+```bash
+npm run install:all
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev:be
+npm run dev:admin
+npm run dev:mobile
+npm run build
+```
+
+## 9. Câu hỏi còn mở
+
+- Dự án muốn giữ base API là `/api` hay chuyển sang `/api/v1` theo API design?
+- Backend sẽ dùng JWT, session cookie, hay cơ chế đơn giản theo yêu cầu môn học?
+- Audit log cần enforce ở database bằng trigger/privilege hay chỉ ở service layer trong giai đoạn demo?

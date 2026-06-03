@@ -1,108 +1,152 @@
-# BlueFood Supply Chain Management
+# BlueFood
 
-BlueFood is a supply chain management system for clean agricultural products. It provides end to end traceability from farm to retail with immutable audit logging and QR code based verification for consumers.
+BlueFood là hệ thống quản lý chuỗi cung ứng thực phẩm sạch, tập trung vào truy xuất nguồn gốc lô hàng, chứng chỉ chất lượng, vận chuyển, mã QR và nhật ký audit bất biến.
 
-## Key Goals
+Tài liệu nghiệp vụ nằm trong [docs/usecases](docs/usecases). Các ràng buộc trong thư mục này là nguồn tham chiếu chính khi thiết kế API, database, UI và test case.
 
-- Ensure transparency and traceability of agricultural products
-- Keep audit history append only (no edit or delete)
-- Provide QR code based consumer verification
-- Track certifications and shipping status in real time
+## Phạm vi hiện tại
 
-## Tech Stack
+- Backend API: Node.js, Express, Prisma, PostgreSQL.
+- Admin web: React, TypeScript, Vite; hiện dùng mock data cho dashboard/admin.
+- Mobile web: React, TypeScript, Vite, Tailwind; phục vụ quét QR, truy xuất, thao tác theo vai trò farm/transporter/store/inspector.
+- Database: PostgreSQL với Prisma schema cho tài khoản, đối tác, lô hàng, chứng chỉ, vận chuyển, checkpoint, sự cố, QR và log quét QR.
 
-- Frontend: React + TypeScript + Vite
-- Backend: Node.js + Express.js
-- Database: PostgreSQL
-- File storage: Local server storage (certificates, images)
+## Cấu trúc thư mục
 
-## Core Use Cases
-
-The system is organized into functional packages covering use cases UC01 to UC45. 
-
-For detailed use case descriptions and implementation progress, please refer to the [Documentation](#documentation) section or check [WALKTHROUGH.md](WALKTHROUGH.md).
-
-## Important Constraints
-
-- Audit log must be append only (no update or delete)
-- QR scan response time target under 2 seconds
-- Index on shipment ID, QR code hash, and timestamps
-- QR code authenticity must be validated and protected
-
-## Repository Structure
-
-- [src/](src/) UI source code
-- [src/App.tsx](src/App.tsx) main dashboard view
-- [src/mocks/dashboard.json](src/mocks/dashboard.json) mock data for UI
-- [docs/usecases/](docs/usecases/) full use case documentation
-
-## Local Development
-
-1) Install dependencies
-
-```bash
-npm install
+```text
+bluefood/
+├─ be/                         Backend API Express + Prisma
+│  ├─ docs/API_DESIGN.md        Thiết kế API theo use case và schema
+│  ├─ prisma/                   Prisma schema và migrations
+│  └─ src/                      App, server, routes, Prisma client wrapper
+├─ docs/
+│  ├─ usecases/                 UC01-UC45 và ràng buộc nghiệp vụ
+│  └─ WALKTHROUGH_*.md          Checklist tiến độ chi tiết
+├─ fe/
+│  ├─ admin/                    Admin dashboard web app
+│  └─ mobile/app/               Mobile-first web app cho QR và vai trò vận hành
+├─ README.md                    Tổng quan, cài đặt, cách chạy
+└─ WALKTHROUGH.md               Ma trận tiến độ kỹ thuật hiện tại
 ```
 
-2) Start the dev server
+## Ràng buộc nghiệp vụ bắt buộc
+
+- Audit log là append-only: không cung cấp thao tác sửa/xóa log qua ứng dụng.
+- Mọi thay đổi trạng thái hoặc dữ liệu nghiệp vụ quan trọng phải ghi audit log.
+- Mỗi lô hàng có mã định danh duy nhất và có QR truy xuất.
+- Khách hàng có thể quét QR/truy xuất mà không cần đăng nhập.
+- QR phải hợp lệ, đang active, và phản hồi truy xuất mục tiêu dưới 2 giây.
+- Không xóa vật lý dữ liệu có lịch sử chuỗi cung ứng; dùng trạng thái hủy/khóa/vô hiệu hóa.
+- Phân quyền theo vai trò: `ADMIN`, `FARMER`, `TRANSPORTER`, `WAREHOUSE`, `STORE`, `INSPECTOR`.
+- Tài liệu trong `docs/usecases` là chuẩn nghiệp vụ; nếu code thay đổi luồng, cập nhật tài liệu tương ứng.
+
+## Cài đặt môi trường
+
+Yêu cầu khuyến nghị:
+
+- Node.js 20+
+- npm 10+
+- PostgreSQL hoặc Supabase PostgreSQL
+
+Cài dependencies cho toàn bộ repo:
 
 ```bash
-npm run dev
+npm run install:all
 ```
 
-3) Build
+Dự án dùng trực tiếp file `.env` thật tại từng module:
+
+```text
+be/.env
+fe/admin/.env
+fe/mobile/app/.env
+```
+
+Lưu ý bảo mật: không commit `.env`, `env`, private key, token hoặc chuỗi kết nối thật. Các file `.env` đã được ignore.
+
+## Chạy local
+
+Backend:
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev:be
+```
+
+Admin web:
+
+```bash
+npm run dev:admin
+```
+
+Mobile web:
+
+```bash
+npm run dev:mobile
+```
+
+URL mặc định:
+
+- Backend API: `http://localhost:4000`
+- Admin web: Vite sẽ in URL khi chạy, thường là `http://localhost:5173`
+- Mobile web: Vite sẽ in URL khi chạy, theo cấu hình hiện tại thường là `https://localhost:5173`
+
+## Kiểm tra nhanh
 
 ```bash
 npm run build
 ```
 
-## Mock Data
+Lệnh này chạy typecheck backend, build admin và build mobile.
 
-The current UI uses local mock data at [src/mocks/dashboard.json](src/mocks/dashboard.json). This will be replaced by REST APIs once the backend is ready.
+Các lệnh riêng:
 
-## API Response Convention
-
-Standard response structure
-
-```json
-{
-  "success": true,
-  "data": {},
-  "meta": {
-    "timestamp": "ISO-8601",
-    "requestId": "uuid"
-  },
-  "errors": null
-}
+```bash
+npm run build:be
+npm run build:admin
+npm run build:mobile
 ```
 
-Error response
+## API hiện có
 
-```json
-{
-  "success": false,
-  "data": null,
-  "errors": [
-    {
-      "code": "SHIPMENT_NOT_FOUND",
-      "message": "Shipment does not exist",
-      "field": "shipment_id"
-    }
-  ]
-}
-```
+Backend hiện mount route dưới `/api`.
 
-## Security Notes
+- `GET /api/health`
+- `POST /api/auth/login`
+- `POST /api/auth/register-customer`
+- `GET /api/accounts`
+- `GET /api/transporters`
+- `GET /api/stores`
+- `GET /api/partners`
+- `GET /api/batches`
+- `POST /api/batches`
+- `GET /api/batches/:batchCode`
+- `POST /api/batches/:batchCode/certificates`
+- `DELETE /api/batches/:batchCode/certificates/:certificateId`
+- `GET /api/transports`
+- `POST /api/batches/:batchCode/assign-transport`
+- `GET /api/transports/:transportId/checkpoints`
+- `POST /api/transports/:transportId/checkpoints`
+- `GET /api/store/deliveries`
+- `POST /api/store/deliveries/:batchCode/confirm`
+- `POST /api/store/deliveries/:batchCode/issues`
+- `GET /api/store/issues`
+- `GET /api/qr/:qrId`
 
-- QR code must include shipment ID and signature; validate on scan
-- File storage must be outside web root and served by controller
-- Enforce role permissions on every protected endpoint
+Thiết kế API đầy đủ hơn nằm ở [be/docs/API_DESIGN.md](be/docs/API_DESIGN.md). Lưu ý: file thiết kế dùng base path dự kiến `/api/v1`, còn implementation hiện tại đang dùng `/api`.
 
-## Documentation
+## Tài liệu quan trọng
 
-- [docs/usecases/UC_All_Use_Cases.md](docs/usecases/UC_All_Use_Cases.md)
-- [docs/usecases/UC_Account_Management.md](docs/usecases/UC_Account_Management.md)
-- [docs/usecases/UC_Shipment_And_History.md](docs/usecases/UC_Shipment_And_History.md)
-- [docs/usecases/UC_Shipping_And_Audit.md](docs/usecases/UC_Shipping_And_Audit.md)
-- [docs/usecases/UC_Certificate_And_Reporting.md](docs/usecases/UC_Certificate_And_Reporting.md)
-- [docs/usecases/UC_QR_And_Partner_Management.md](docs/usecases/UC_QR_And_Partner_Management.md)
+- [WALKTHROUGH.md](WALKTHROUGH.md): tiến độ kỹ thuật, cấu trúc, việc còn thiếu.
+- [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md): checklist triển khai chi tiết theo giai đoạn.
+- [docs/usecases/UC_All_Use_Cases.md](docs/usecases/UC_All_Use_Cases.md): danh sách UC01-UC45.
+- [be/docs/API_DESIGN.md](be/docs/API_DESIGN.md): API design theo use case.
+- [Wireframe ADMIN BlueFood.pdf](<Wireframe ADMIN BlueFood.pdf>): wireframe admin.
+
+## Quy ước cập nhật tài liệu
+
+- Thay đổi API: cập nhật `be/docs/API_DESIGN.md` và README liên quan.
+- Thay đổi nghiệp vụ: cập nhật file use case tương ứng trong `docs/usecases`.
+- Hoàn thành task: tick trong `WALKTHROUGH.md` hoặc walkthrough chi tiết trong `docs`.
+- Thay đổi cấu trúc/môi trường: cập nhật README root và file `.env` local tương ứng.
