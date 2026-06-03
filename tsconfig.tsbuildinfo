@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/auth.tsx","./src/data.ts","./src/main.tsx","./src/vite-env.d.ts","./src/pages/publicpages.tsx","./src/pages/settingspage.tsx","./src/roles/farm/farmpages.tsx","./src/roles/inspector/inspectorpages.tsx","./src/roles/store/storepages.tsx","./src/roles/transporter/transporterpages.tsx","./src/shared/ui.tsx"],"version":"5.9.3"}
