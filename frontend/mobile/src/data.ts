@@ -12,6 +12,25 @@ export type Certificate = {
   note: string;
 };
 
+export type SupplyChainCheckpoint = {
+  id: string;
+  sequence: number;
+  locationName: string;
+  statusAtCheckpoint: string;
+  note: string;
+  reportedAt: string;
+  updated: boolean;
+};
+
+export type SupplyChainTransport = {
+  id: string;
+  status: string;
+  actualDeparture: string;
+  actualArrival: string;
+  destinationName: string;
+  checkpoints: SupplyChainCheckpoint[];
+};
+
 export type Batch = {
   id: string;
   batchCode: string;
@@ -26,6 +45,7 @@ export type Batch = {
   hasQR: boolean;
   qrCodePath?: string;
   notes: string;
+  transport?: SupplyChainTransport;
 };
 
 export const batches: Batch[] = [

@@ -260,10 +260,18 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
     notes: editingBatch?.notes ?? '',
     hasQR: editingBatch?.hasQR ?? true
   });
-  const [deliveryStaff, setDeliveryStaff] = useState<DeliveryStaff[]>([]);
-  const [destinationStores, setDestinationStores] = useState<DestinationStore[]>([]);
-  const [assignmentForm, setAssignmentForm] = useState({ driverAccountId: '', receiverPartnerId: '' });
+  const [draftCertificates, setDraftCertificates] = useState<Certificate[]>([]);
+  const [certificateSearchTerm, setCertificateSearchTerm] = useState('');
+  const [certificateAction, setCertificateAction] = useState<CertificateAction | null>(null);
+  const [certForm, setCertForm] = useState<Omit<Certificate, 'id'>>(emptyCertificate);
+  const [uploadMessage, setUploadMessage] = useState('');
   const [formMessage, setFormMessage] = useState('');
+
+  const visibleDraftCertificates = useMemo(() => {
+    const keyword = certificateSearchTerm.trim().toLowerCase();
+    if (!keyword) return draftCertificates;
+    return draftCertificates.filter((cert) => [cert.name, cert.issuer, cert.issuedDate, cert.expiryDate, cert.note, certificateLabels[cert.status]].some((value) => value.toLowerCase().includes(keyword)));
+  }, [certificateSearchTerm, draftCertificates]);
 
   useEffect(() => {
     if (editingBatch) return;
@@ -273,33 +281,56 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
     });
   }, [batches, editingBatch, suggestedBatchCode]);
 
-  useEffect(() => {
-    if (editingBatch) return;
-    let active = true;
-
-    Promise.all([getDeliveryStaff(), getDestinationStores()])
-      .then(([staffItems, storeItems]) => {
-        if (!active) return;
-        setDeliveryStaff(staffItems);
-        setDestinationStores(storeItems);
-      })
-      .catch(() => {
-        if (!active) return;
-        setDeliveryStaff([]);
-        setDestinationStores([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [editingBatch]);
-
   function updateField(name: keyof typeof form, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function updateAssignmentField(name: keyof typeof assignmentForm, value: string) {
-    setAssignmentForm((current) => ({ ...current, [name]: value }));
+  function chooseCertificateUpload() {
+    setCertificateAction('upload');
+    setCertForm(emptyCertificate);
+    setUploadMessage('');
+  }
+
+  function handleDraftCertificateFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const nameFromFile = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+    setCertificateAction('upload');
+    setCertForm((current) => ({
+      ...current,
+      name: current.name || nameFromFile,
+      note: current.note || `Đã chọn tệp ${file.name}. Điền thông tin còn lại rồi bấm lưu.`
+    }));
+    setUploadMessage(`Đã chọn tệp: ${file.name}`);
+    event.target.value = '';
+  }
+
+  function saveDraftCertificate(event: FormEvent) {
+    event.preventDefault();
+    const nextCert: Certificate = {
+      id: createId('cert'),
+      name: certForm.name.trim() || 'Chứng chỉ mới',
+      issuer: certForm.issuer.trim() || 'Đơn vị cấp',
+      issuedDate: certForm.issuedDate,
+      expiryDate: certForm.expiryDate,
+      status: certForm.status,
+      note: certForm.note.trim()
+    };
+
+    setDraftCertificates((current) => [nextCert, ...current]);
+    setCertificateAction(null);
+    setCertForm(emptyCertificate);
+    setUploadMessage('');
+  }
+
+  function removeDraftCertificate(certId: string) {
+    setDraftCertificates((current) => current.filter((cert) => cert.id !== certId));
+  }
+
+  function closeDraftCertificateModal() {
+    setCertificateAction(null);
+    setCertForm(emptyCertificate);
+    setUploadMessage('');
   }
 
   async function submit(event: FormEvent) {
@@ -320,7 +351,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
       expiryDate: form.expiryDate,
       status: form.status,
       location: form.location.trim(),
-      certifications: editingBatch?.certifications ?? [],
+      certifications: editingBatch?.certifications ?? draftCertificates,
       hasQR: true,
       qrCodePath: editingBatch?.qrCodePath ?? `/trace/${encodeURIComponent(batchCode)}`,
       notes: form.notes.trim()
@@ -337,20 +368,19 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
       return;
     }
 
-    if (
-      (assignmentForm.driverAccountId && !assignmentForm.receiverPartnerId)
-      || (!assignmentForm.driverAccountId && assignmentForm.receiverPartnerId)
-    ) {
-      setFormMessage('Chọn đủ transporter và store điểm đến để phân công vận chuyển, hoặc bỏ trống cả hai.');
-      return;
-    }
-
     try {
       const createdBatch = await createBatchRecord(nextBatch);
-      const shouldAssignTransport = Boolean(assignmentForm.driverAccountId && assignmentForm.receiverPartnerId);
-      const savedBatch = shouldAssignTransport
-        ? await assignBatchTransport(createdBatch.batchCode, assignmentForm)
-        : createdBatch;
+      let savedBatch: Batch = createdBatch;
+      if (draftCertificates.length) {
+        try {
+          for (const cert of draftCertificates) {
+            savedBatch = await createCertificateForBatch(createdBatch.batchCode, cert);
+          }
+        } catch {
+          savedBatch = { ...createdBatch, certifications: draftCertificates };
+          setFormMessage('Lô hàng đã được tạo, nhưng chưa lưu được chứng chỉ lên backend. Vui lòng kiểm tra lại trong chi tiết lô hàng.');
+        }
+      }
       await onSave(savedBatch);
       navigate(`/farm/batches/${savedBatch.id}`);
     } catch (error) {
@@ -359,7 +389,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-paper">
+    <div className="relative flex min-h-full flex-col bg-paper">
       <AppHeader title={formTitle} subtitle="Thông tin tổng quan lô hàng" back />
       <form onSubmit={submit} className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
         {isLockedEdit ? (
@@ -424,35 +454,47 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
 
         {!editingBatch && (
           <section className="rounded-2xl bg-white p-5 shadow-card">
-            <div className="mb-4 flex items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-green-50 text-primary">
-                <Truck size={21} />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-ink">Phân công vận chuyển</h3>
-                <p className="mt-1 text-sm text-muted">Có thể chọn sau. Nếu chọn đủ transporter và store, lô sẽ chuyển sang đang vận chuyển sau khi lưu.</p>
-              </div>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="font-extrabold text-ink">Chứng chỉ</h3>
+              <Badge>{draftCertificates.length} mục</Badge>
             </div>
 
-            <label className="form-label">Transporter</label>
-            <select className="input mb-3" value={assignmentForm.driverAccountId} onChange={(event) => updateAssignmentField('driverAccountId', event.target.value)}>
-              <option value="">Chưa phân công</option>
-              {deliveryStaff.map((staff) => (
-                <option key={staff.id} value={staff.id}>
-                  {staff.fullName}{staff.phone ? ` - ${staff.phone}` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="field mb-4">
+              <Search size={18} />
+              <input value={certificateSearchTerm} onChange={(e) => setCertificateSearchTerm(e.target.value)} placeholder="Tra cứu theo tên, đơn vị cấp, ngày hết hạn..." />
+            </div>
 
-            <label className="form-label">Store điểm đến</label>
-            <select className="input" value={assignmentForm.receiverPartnerId} onChange={(event) => updateAssignmentField('receiverPartnerId', event.target.value)}>
-              <option value="">Chưa chọn điểm đến</option>
-              {destinationStores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}{store.address ? ` - ${store.address}` : ''}
-                </option>
+            <div className="space-y-3">
+              {visibleDraftCertificates.map((cert) => (
+                <div key={cert.id} className="rounded-xl border border-line p-3">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-ink">{cert.name}</p>
+                      <p className="text-xs font-semibold text-muted">{cert.issuer}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Badge tone={certificateTones[cert.status]}>{certificateLabels[cert.status]}</Badge>
+                      <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-red-100 bg-red-50 text-red-600" onClick={() => removeDraftCertificate(cert.id)} aria-label={`Xóa ${cert.name}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted">Cấp: {cert.issuedDate || 'N/A'} · Hết hạn: {cert.expiryDate || 'N/A'}</p>
+                  {cert.note && <p className="mt-2 text-sm text-slate-600">{cert.note}</p>}
+                </div>
               ))}
-            </select>
+              {draftCertificates.length === 0 && <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-muted">Chưa có chứng chỉ cho lô hàng này.</p>}
+              {draftCertificates.length > 0 && visibleDraftCertificates.length === 0 && <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-muted">Không tìm thấy chứng chỉ phù hợp.</p>}
+            </div>
+
+            <button
+              type="button"
+              onClick={chooseCertificateUpload}
+              className="primary-btn mt-4 flex w-full items-center justify-center gap-2"
+            >
+              <Upload size={18} />
+              Tải chứng chỉ
+            </button>
           </section>
         )}
 
@@ -471,6 +513,51 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
           <button className="primary-btn flex w-full items-center justify-center gap-2" type="submit"><Save size={18} /> Lưu lô hàng</button>
         )}
       </form>
+
+      {!editingBatch && certificateAction === 'upload' && (
+        <div className="absolute inset-0 z-40 flex items-end bg-slate-950/45 px-4 pb-4 backdrop-blur-sm">
+          <form onSubmit={saveDraftCertificate} className="max-h-[88%] w-full overflow-y-auto rounded-2xl bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,.32)]">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-ink">Tải chứng chỉ</h3>
+                <p className="mt-1 text-xs font-semibold text-muted">{form.batchCode || suggestedBatchCode}</p>
+              </div>
+              <button type="button" className="icon-btn h-9 w-9" onClick={closeDraftCertificateModal} aria-label="Đóng form chứng chỉ"><X size={18} /></button>
+            </div>
+
+            <label className="mb-4 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-green-200 bg-green-50/70 px-4 py-5 text-center text-primary">
+              <Upload size={28} />
+              <span className="mt-2 text-sm font-extrabold">Chọn tệp chứng chỉ</span>
+              <span className="mt-1 text-xs font-semibold text-green-500">PDF, ảnh chụp hoặc hồ sơ chứng nhận</span>
+              <input className="sr-only" type="file" accept=".pdf,image/*" onChange={handleDraftCertificateFileUpload} />
+            </label>
+
+            {uploadMessage && <p className="mb-3 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-leaf">{uploadMessage}</p>}
+
+            <label className="form-label">Tên chứng chỉ</label>
+            <input className="input mb-3" value={certForm.name} onChange={(e) => setCertForm((current) => ({ ...current, name: e.target.value }))} placeholder="VietGAP, GlobalGAP..." />
+            <label className="form-label">Đơn vị cấp</label>
+            <input className="input mb-3" value={certForm.issuer} onChange={(e) => setCertForm((current) => ({ ...current, issuer: e.target.value }))} placeholder="Tên tổ chức cấp chứng nhận" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Ngày cấp</label>
+                <input className="input" value={certForm.issuedDate} onChange={(e) => setCertForm((current) => ({ ...current, issuedDate: e.target.value }))} placeholder="01/01/2026" />
+              </div>
+              <div>
+                <label className="form-label">Ngày hết hạn</label>
+                <input className="input" value={certForm.expiryDate} onChange={(e) => setCertForm((current) => ({ ...current, expiryDate: e.target.value }))} placeholder="01/01/2027" />
+              </div>
+            </div>
+            <label className="form-label mt-3">Trạng thái</label>
+            <select className="input mb-3" value={certForm.status} onChange={(e) => setCertForm((current) => ({ ...current, status: e.target.value as CertificateStatus }))}>
+              {Object.entries(certificateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <label className="form-label">Ghi chú</label>
+            <textarea className="input mb-4 min-h-20 resize-none py-3" value={certForm.note} onChange={(e) => setCertForm((current) => ({ ...current, note: e.target.value }))} placeholder="Thông tin phạm vi áp dụng, hồ sơ đánh giá..." />
+            <button className="primary-btn flex w-full items-center justify-center gap-2" type="submit"><ShieldCheck size={18} /> Lưu chứng chỉ</button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
