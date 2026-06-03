@@ -1,4 +1,4 @@
-import { BarChart3, LayoutDashboard, ShieldAlert, ShieldCheck, Truck, Users, ChevronLeft, ChevronRight, AlertTriangle, Bell, Info, LogOut, X, CheckCircle2 } from 'lucide-react';
+import { BarChart3, LayoutDashboard, ShieldAlert, ShieldCheck, Truck, Users, ChevronLeft, ChevronRight, AlertTriangle, Bell, Info, LogOut, X } from 'lucide-react';
 import { useState } from 'react';
 import type { AdminUser } from '../../auth';
 import { BlueFoodLogo } from '../common/BlueFoodLogo';

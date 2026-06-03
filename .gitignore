@@ -26,6 +26,8 @@ be/generated/prisma/
 .vite/
 .cache/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # Editor and OS files
 .DS_Store
@@ -33,3 +35,5 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+
