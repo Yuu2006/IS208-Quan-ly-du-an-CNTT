@@ -19,8 +19,12 @@ const loginRoleMap = {
   inspector: ["INSPECTOR"],
 } as const;
 
-function accountRoleMatchesLoginRole(accountRole: string, loginRole: keyof typeof loginRoleMap) {
-  return loginRoleMap[loginRole].some((allowedRole) => allowedRole === accountRole);
+function mapAccountRoleToLoginRole(accountRole: string) {
+  const roleEntry = Object.entries(loginRoleMap).find(([, allowedRoles]) =>
+    (allowedRoles as readonly string[]).includes(accountRole),
+  );
+
+  return roleEntry?.[0] as keyof typeof loginRoleMap | undefined;
 }
 
 const certificateTypes = new Set(Object.values(CertificateType));
@@ -137,14 +141,14 @@ apiRouter.get("/health", async (_req, res, next) => {
 
 apiRouter.post("/auth/login", async (req, res, next) => {
   try {
-    const { email, password, role } = req.body as {
+    const { username, email, password } = req.body as {
+      username?: string;
       email?: string;
       password?: string;
-      role?: keyof typeof loginRoleMap;
     };
 
-    const identifier = email?.trim();
-    if (!identifier || !password || !role || !loginRoleMap[role]) {
+    const identifier = username?.trim() || email?.trim();
+    if (!identifier || !password) {
       res.status(400).json({ message: "Missing login credentials" });
       return;
     }
@@ -165,13 +169,19 @@ apiRouter.post("/auth/login", async (req, res, next) => {
       },
     });
 
-    if (!account || account.passwordHash !== password || !accountRoleMatchesLoginRole(account.role, role)) {
-      res.status(401).json({ message: "Invalid username, password, or role" });
+    if (!account || account.passwordHash !== password) {
+      res.status(401).json({ message: "Invalid username or password" });
       return;
     }
 
     if (account.status !== "ACTIVE") {
       res.status(403).json({ message: "Account is locked" });
+      return;
+    }
+
+    const role = mapAccountRoleToLoginRole(account.role);
+    if (!role) {
+      res.status(403).json({ message: "Account role is not supported" });
       return;
     }
 
