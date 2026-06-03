@@ -2408,6 +2408,35 @@ apiRouter.get("/trace/:traceToken", async (req, res, next) => {
                 changedAt: true,
               },
             },
+            transport: {
+              select: {
+                transportId: true,
+                transportStatus: true,
+                actualDeparture: true,
+                actualArrival: true,
+                receiverPartner: {
+                  select: {
+                    partnerName: true,
+                    address: true,
+                  },
+                },
+                checkpoints: {
+                  orderBy: { sequence: "asc" },
+                  select: {
+                    checkpointId: true,
+                    transportId: true,
+                    sequence: true,
+                    locationName: true,
+                    latitude: true,
+                    longitude: true,
+                    temperature: true,
+                    statusAtCheckpoint: true,
+                    note: true,
+                    reportedAt: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -2460,6 +2489,7 @@ apiRouter.get("/trace/:traceToken", async (req, res, next) => {
         },
         origin: qrCode.batch.farmPartner,
         certificates: qrCode.batch.certificates.map((item) => item.certificate),
+        transport: qrCode.batch.transport,
         timeline: qrCode.batch.statusHistory,
         qr: {
           traceToken: qrCode.traceToken,

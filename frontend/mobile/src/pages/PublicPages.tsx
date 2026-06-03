@@ -86,6 +86,53 @@ function normalizeTraceId(value: string) {
     .replace(/\.png$/i, '');
 }
 
+type TraceTimelineStep = {
+  title: string;
+  completedAt: string;
+  done: boolean;
+  description?: string;
+};
+
+function checkpointTitle(sequence: number, locationName: string) {
+  const code = `CP-${String(sequence).padStart(2, '0')}`;
+  return locationName ? `${code}: ${locationName}` : code;
+}
+
+function buildSupplyChainSteps(batch: Batch): TraceTimelineStep[] {
+  const checkpoints = batch.transport?.checkpoints ?? [];
+  const checkpointSteps = checkpoints.map((checkpoint) => {
+    const status = checkpoint.statusAtCheckpoint && checkpoint.statusAtCheckpoint !== 'Chưa cập nhật'
+      ? checkpoint.statusAtCheckpoint
+      : 'Transport checkpoint';
+
+    return {
+      title: checkpointTitle(checkpoint.sequence, checkpoint.locationName),
+      completedAt: checkpoint.updated ? checkpoint.reportedAt : 'Chưa cập nhật',
+      done: checkpoint.updated,
+      description: checkpoint.note ? `${status} · ${checkpoint.note}` : status
+    };
+  });
+
+  return [
+    {
+      title: 'Thu hoạch tại nông trại',
+      completedAt: batch.harvestDate,
+      done: true,
+      description: 'Bắt đầu hành trình chuỗi cung ứng'
+    },
+    ...(
+      checkpointSteps.length
+      ? checkpointSteps
+      : [{
+          title: 'Transport checkpoint',
+          completedAt: 'Đang chờ cập nhật',
+          done: false,
+          description: 'Chưa có mốc vận chuyển trong bảng transport_checkpoint'
+        }]
+    )
+  ];
+}
+
 type QrImageSource = ImageBitmap | HTMLImageElement;
 
 function getImageSourceSize(source: QrImageSource) {
@@ -592,12 +639,7 @@ export function Trace() {
 
   const batch = fetchedBatch;
   const validCertificateCount = batch.certifications.filter((cert) => cert.status === 'valid').length;
-  const steps = [
-    { title: 'Thu hoạch tại nông trại', completedAt: batch.harvestDate, done: true },
-    { title: 'Sơ chế & đóng gói', completedAt: 'Theo dữ liệu nông trại', done: true },
-    { title: 'Vận chuyển chuỗi lạnh', completedAt: 'Theo dữ liệu vận chuyển', done: batch.status === 'in_transit' || batch.status === 'delivered' },
-    { title: 'Đến cửa hàng', completedAt: batch.status === 'delivered' ? 'Đã hoàn thành' : 'Chưa hoàn thành', done: batch.status === 'delivered' }
-  ];
+  const steps = buildSupplyChainSteps(batch);
 
   return (
     <div className="min-h-full bg-paper">
@@ -617,7 +659,7 @@ export function Trace() {
         </div>
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <h3 className="mb-4 font-bold text-ink">Hành trình chuỗi cung ứng</h3>
-          {steps.map((step, index) => <TimelineItem key={step.title} title={step.title} completedAt={step.completedAt} done={step.done} last={index === steps.length - 1} />)}
+          {steps.map((step, index) => <TimelineItem key={step.title} title={step.title} completedAt={step.completedAt} done={step.done} description={step.description} last={index === steps.length - 1} />)}
         </section>
         <button type="button" className="outline-btn flex w-full items-center justify-center gap-2" onClick={() => setShowCertificates(true)}>
           <FileCheck2 size={18} />
