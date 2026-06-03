@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Batch, BatchStatus, Certificate, CertificateStatus } from './data';
+import { Batch, BatchStatus, Certificate, CertificateStatus, SupplyChainTransport } from './data';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
@@ -76,6 +76,7 @@ type BackendBatch = {
   farmPartner?: BackendPartner | null;
   certificates?: BackendBatchCert[];
   qrCode?: BackendQrCode | null;
+  transport?: BackendTransport | null;
 };
 
 type BackendCheckpoint = {
@@ -131,6 +132,7 @@ type BackendPublicTrace = {
   batch: BackendBatch;
   origin?: BackendPartner | null;
   certificates?: BackendCertificate[];
+  transport?: BackendTransport | null;
   qr?: {
     traceToken?: string | null;
     status?: string | null;
@@ -259,9 +261,10 @@ function mapCertificateStatus(status?: string | null, expiryDate?: string): Cert
 
 function mapCertificate(item: BackendBatchCert): Certificate {
   const cert = item.certificate;
+  const isOtherType = cert.certType === 'OTHER';
   return {
     id: String(cert.certificateId),
-    name: cert.certType,
+    name: isOtherType ? cert.issuedBy : cert.certType,
     issuer: cert.issuedBy,
     issuedDate: formatDate(cert.issuedDate),
     expiryDate: formatDate(cert.expiryDate),
@@ -391,6 +394,19 @@ function mapTransporterTransport(item: BackendTransport): TransporterTransport {
   };
 }
 
+function mapSupplyChainTransport(item: BackendTransport): SupplyChainTransport {
+  const receiver = item.receiverPartner?.partnerName ?? 'Cửa hàng';
+
+  return {
+    id: String(item.transportId),
+    status: transportStatusLabels[item.transportStatus ?? ''] ?? item.transportStatus ?? 'Chưa cập nhật',
+    actualDeparture: formatDateTime(item.actualDeparture),
+    actualArrival: formatDateTime(item.actualArrival),
+    destinationName: receiver,
+    checkpoints: item.checkpoints?.map(mapCheckpoint) ?? []
+  };
+}
+
 function mapDeliveryStaff(item: BackendAccount): DeliveryStaff {
   return {
     id: String(item.accountId),
@@ -437,7 +453,7 @@ export async function getBatchByCode(batchCode: string) {
 export async function getPublicTraceBatch(traceToken: string) {
   const { data } = await api.get<BackendPublicTrace>(`/trace/${encodeURIComponent(traceToken)}`);
 
-  return mapBatch({
+  const batch = mapBatch({
     ...data.batch,
     farmPartner: data.origin,
     certificates: data.certificates?.map((certificate) => ({ certificate })) ?? [],
@@ -447,6 +463,11 @@ export async function getPublicTraceBatch(traceToken: string) {
       status: data.qr?.status ?? 'ACTIVE'
     }
   });
+
+  return {
+    ...batch,
+    transport: data.transport ? mapSupplyChainTransport(data.transport) : undefined
+  };
 }
 
 export async function createBatchRecord(batch: Batch) {
