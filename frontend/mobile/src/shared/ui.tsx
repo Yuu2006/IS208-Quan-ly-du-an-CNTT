@@ -47,18 +47,20 @@ import { CertificateStatus } from '../data';
 import { UserRole, useAuth } from '../auth';
 
 export const statusLabels = {
-  draft: 'Nháp',
   ready: 'Sẵn sàng',
+  at_warehouse: 'Đã đến kho',
   in_transit: 'Đang vận chuyển',
   delivered: 'Đã giao',
+  incident_reported: 'Có sự cố',
   cancelled: 'Đã hủy'
 };
 
 export const statusClasses = {
-  draft: 'border-slate-300 text-slate-500 bg-slate-50',
   ready: 'border-leaf/30 text-leaf bg-green-50',
+  at_warehouse: 'border-sky-300 text-sky-700 bg-sky-50',
   in_transit: 'border-amber-300 text-amber-700 bg-amber-50',
   delivered: 'border-emerald-300 text-emerald-700 bg-emerald-50',
+  incident_reported: 'border-red-300 text-red-700 bg-red-50',
   cancelled: 'border-red-300 text-red-700 bg-red-50'
 };
 
