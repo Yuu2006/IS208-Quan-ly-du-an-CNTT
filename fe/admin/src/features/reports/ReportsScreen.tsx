@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart3, Download, Filter, Calendar, Tag, AlertTriangle, FileText, CheckCircle2, X, Search, ChevronRight, Box, Leaf, QrCode, Smartphone } from 'lucide-react';
+import { BarChart3, Download, Calendar, Tag, AlertTriangle, FileText, X, ChevronRight, Box, QrCode, Smartphone } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
 import { ExportPreviewModal } from '../../components/common/ExportPreviewModal';
 
@@ -17,11 +17,12 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
   const handleExportClick = (format: 'pdf' | 'excel') => {
     setExportFormat(format);
     setShowExportModal(true);
+    showToast(`Đang chuẩn bị file ${format.toUpperCase()}`);
   };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-800">Hiệu suất chuỗi cung ứng</h1>
           <p className="text-slate-500 mt-2">Tổng hợp dữ liệu và phân tích hoạt động BlueFood</p>

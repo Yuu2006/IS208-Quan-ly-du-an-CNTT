@@ -36,17 +36,17 @@ export function DashboardScreen({ data: _data }: { data?: any }) {
   const currentChart = chartDataMap[timeRange as keyof typeof chartDataMap];
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
-      <header className="mb-2">
-        <h1 className="text-3xl font-bold text-slate-800">Bảng điều khiển</h1>
-        <p className="text-slate-500 mt-1">Theo dõi thời gian thực toàn bộ chuỗi cung ứng BlueFood</p>
+      <header>
+        <h1 className="text-2xl font-extrabold text-slate-800">Bảng điều khiển</h1>
+        <p className="text-sm font-normal text-slate-500 mt-1">Theo dõi thời gian thực toàn bộ chuỗi cung ứng BlueFood</p>
       </header>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between group hover:border-sage-300 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg">
-              <Truck size={20} />
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col group hover:border-sage-300 transition-colors">
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-inner">
+              <Truck size={24} />
             </div>
             <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
               <ArrowUpRight size={14} /> 12%
@@ -56,10 +56,10 @@ export function DashboardScreen({ data: _data }: { data?: any }) {
           <div className="text-3xl font-bold text-slate-800">24 <span className="text-sm font-medium text-slate-400">chuyến</span></div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between group hover:border-sage-300 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-lg">
-              <Users size={20} />
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col group hover:border-sage-300 transition-colors">
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shadow-inner">
+              <Users size={24} />
             </div>
             <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
               Cần xử lý
@@ -69,27 +69,27 @@ export function DashboardScreen({ data: _data }: { data?: any }) {
           <div className="text-3xl font-bold text-slate-800">8 <span className="text-sm font-medium text-slate-400">chờ duyệt</span></div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between group hover:border-sage-300 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-lg">
-              <Package size={20} />
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col group hover:border-sage-300 transition-colors">
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shadow-inner">
+              <Package size={24} />
             </div>
           </div>
           <div className="text-sm font-bold text-slate-500 mb-1">Cảnh báo tồn kho</div>
           <div className="text-3xl font-bold text-slate-800">15 <span className="text-sm font-medium text-slate-400">sắp hết hạn</span></div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between group hover:border-red-300 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-bold text-lg">
-              <ShieldAlert size={20} />
+        <div className="bg-white p-6 rounded-2xl border border-red-200 shadow-sm flex flex-col group hover:border-red-300 transition-colors">
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shadow-inner">
+              <ShieldAlert size={24} />
             </div>
             <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg animate-pulse">
               Khẩn cấp
             </span>
           </div>
-          <div className="text-sm font-bold text-red-600 mb-1">Sự cố lô hàng</div>
-          <div className="text-3xl font-bold text-red-700">3 <span className="text-sm font-medium text-red-400">báo cáo lỗi</span></div>
+          <div className="text-sm font-bold text-slate-500 mb-1">Sự cố lô hàng</div>
+          <div className="text-3xl font-bold text-slate-800">3 <span className="text-sm font-medium text-slate-400">báo cáo lỗi</span></div>
         </div>
       </div>
 
@@ -124,19 +124,21 @@ export function DashboardScreen({ data: _data }: { data?: any }) {
             
             {/* Bars container */}
             <div className="flex-1 flex items-end justify-between gap-2 sm:gap-6 pl-16 pr-4 relative z-10 h-full pb-8">
-              {currentChart.data.map((item, i) => (
+              {currentChart.data.map((item, i) => {
+                const isMax = item.val === Math.max(...currentChart.data.map(d => d.val));
+                return (
                 <div key={i} className="flex-1 flex flex-col items-center group h-full justify-end relative">
                   <div 
-                    className="w-full max-w-[48px] bg-sage-300 hover:bg-sage-400 rounded-t-lg transition-colors relative flex justify-center cursor-pointer shadow-sm" 
+                    className={`w-full max-w-[48px] ${isMax ? 'bg-sage-600' : 'bg-sage-400'} hover:bg-sage-500 rounded-t-lg transition-colors relative flex justify-center cursor-pointer shadow-sm`}
                     style={{ height: `${(item.val / currentChart.yMax) * 100}%` }}
                   >
-                    <div className="absolute -top-9 bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-md pointer-events-none">
+                    <div className="absolute -top-10 bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50 shadow-lg pointer-events-none after:content-[''] after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-slate-800">
                       {item.val} chuyến
                     </div>
                   </div>
-                  <div className="text-xs font-bold text-slate-500 absolute -bottom-6">{item.day}</div>
+                  <div className={`text-xs font-bold absolute -bottom-6 ${isMax ? 'text-sage-700' : 'text-slate-500'}`}>{item.day}</div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         </div>
@@ -183,7 +185,7 @@ export function DashboardScreen({ data: _data }: { data?: any }) {
               <ShieldAlert className="text-sage-600" size={20} />
               Chứng nhận chất lượng
             </h2>
-            <button className="text-xs font-bold text-sage-600 hover:underline">Quản lý (UC14)</button>
+            <button className="text-xs font-bold text-sage-600 hover:underline">Quản lý chứng chỉ</button>
           </div>
           <div className="space-y-4">
             <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50 flex items-center justify-between">

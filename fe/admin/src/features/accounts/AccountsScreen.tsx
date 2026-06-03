@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Search, Plus, UserCog, ToggleLeft, ToggleRight, MoreVertical, X, ChevronLeft, ChevronRight, ShieldCheck, Building2 } from 'lucide-react';
+import { Plus, UserCog, ToggleLeft, ToggleRight, MoreVertical, X, ChevronLeft, ChevronRight, ShieldCheck, Building2 } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
 
 export function AccountsScreen({ data }: { data: any }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [detailRow, setDetailRow] = useState<any>(null);
+  const [editForm, setEditForm] = useState<any>({});
   const [confirmToggle, setConfirmToggle] = useState<any>(null);
   const [formErrors, setFormErrors] = useState<any>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -21,7 +23,7 @@ export function AccountsScreen({ data }: { data: any }) {
     setIsSubmitting(true);
     setFormErrors({});
 
-    // Simulate API call & Validation (UC04 - 3a, 3b, 5)
+    // Simulate API call & Validation
     setTimeout(() => {
       setIsSubmitting(false);
       // Giả lập lỗi để trình diễn luồng lỗi
@@ -38,9 +40,23 @@ export function AccountsScreen({ data }: { data: any }) {
     }, 800);
   };
 
+  const mockEditSubmit = () => {
+    setIsSubmitting(true);
+    setFormErrors({});
+
+    setTimeout(() => {
+      setIsSubmitting(false);
+      // Simulate successful edit
+      setRows(rows.map((r: any) => r.id === editForm.id ? { ...r, ...editForm } : r));
+      setDetailRow({ ...detailRow, ...editForm }); // Update drawer detail
+      alert('Cập nhật tài khoản thành công!');
+      setShowEditModal(false);
+    }, 600);
+  };
+
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
-      <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-800">Quản lý người dùng</h1>
           <p className="text-slate-500 mt-2">Phân quyền và kiểm soát truy cập hệ thống</p>
@@ -338,7 +354,7 @@ export function AccountsScreen({ data }: { data: any }) {
                     </div>
                     <div>
                       <div className="text-xs text-slate-500 mb-1">Người tạo tài khoản</div>
-                      <div className="text-sm font-semibold text-slate-800">Admin_Super (Trần Q.)</div>
+                      <div className="text-sm font-semibold text-slate-800">Quản trị viên (Trần Q.)</div>
                       <div className="text-xs text-slate-400 mt-0.5">Lúc 08:00 - 12/04/2026</div>
                     </div>
                   </div>
@@ -347,8 +363,100 @@ export function AccountsScreen({ data }: { data: any }) {
             </div>
 
             <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end">
-              <button className="px-6 py-2.5 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 rounded-xl transition-colors shadow-sm">
-                Chỉnh sửa hồ sơ (UC05)
+              <button 
+                onClick={() => {
+                  setEditForm({ ...detailRow, phone: '+84 90 123 4567' }); // Mock phone since it's not in basic list
+                  setShowEditModal(true);
+                }}
+                className="px-6 py-2.5 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 rounded-xl transition-colors shadow-sm"
+              >
+                Chỉnh sửa hồ sơ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Account Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
+              <h3 className="text-xl font-bold text-slate-800">Cập nhật tài khoản</h3>
+              <button onClick={() => { setShowEditModal(false); setFormErrors({}); }} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Họ và tên <span className="text-red-500">*</span></label>
+                  <input 
+                    type="text" 
+                    value={editForm.name || ''} 
+                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                    placeholder="Nhập họ và tên..." 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/50 focus:border-sage-500 outline-none transition-all" 
+                  />
+                </div>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Email <span className="text-red-500">*</span></label>
+                  <input 
+                    type="email" 
+                    value={editForm.email || ''} 
+                    onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                    placeholder="Nhập địa chỉ email hợp lệ..." 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/50 focus:border-sage-500 outline-none transition-all" 
+                  />
+                </div>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Số điện thoại <span className="text-red-500">*</span></label>
+                  <input 
+                    type="tel" 
+                    value={editForm.phone || ''} 
+                    onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                    placeholder="Nhập số điện thoại..." 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/50 focus:border-sage-500 outline-none transition-all" 
+                  />
+                </div>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Vai trò <span className="text-red-500">*</span></label>
+                  <select 
+                    value={editForm.role || ''} 
+                    onChange={(e) => setEditForm({...editForm, role: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/50 focus:border-sage-500 outline-none transition-all cursor-pointer appearance-none"
+                  >
+                    <option value="">-- Chọn vai trò --</option>
+                    <option value="Quản trị viên">Quản trị viên</option>
+                    <option value="Quản lý kho">Quản lý kho</option>
+                    <option value="Điều phối viên">Điều phối viên</option>
+                    <option value="Nhân viên">Nhân viên</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 shrink-0">
+              <button
+                onClick={() => { setShowEditModal(false); setFormErrors({}); }}
+                className="px-6 py-3 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 rounded-xl transition-colors shadow-sm"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={mockEditSubmit}
+                disabled={isSubmitting}
+                className="px-6 py-3 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 disabled:opacity-70 disabled:cursor-not-allowed rounded-xl transition-colors shadow-sm flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Đang lưu...
+                  </>
+                ) : (
+                  'Lưu thay đổi'
+                )}
               </button>
             </div>
           </div>
@@ -373,7 +481,7 @@ export function AccountsScreen({ data }: { data: any }) {
               </p>
               {confirmToggle.isActive && (
                 <p className="text-xs text-red-500 mt-2 font-medium bg-red-50 p-2 rounded-lg border border-red-100">
-                  Lưu ý: Tài khoản bị khóa sẽ không thể truy cập vào hệ thống (UC07).
+                  Lưu ý: Tài khoản bị khóa sẽ không thể truy cập vào hệ thống.
                 </p>
               )}
             </div>

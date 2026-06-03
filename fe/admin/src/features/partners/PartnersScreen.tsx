@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, AlertCircle, CheckCircle2, X, Calendar, Tag, BarChart3, Building2, MapPin, Mail, Phone, Edit2, ShieldAlert, MoreVertical, Clock, ChevronDown, ArrowRight } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle2, X, Calendar, Tag, BarChart3, Building2, MapPin, Mail, Phone, Edit2, ShieldAlert, MoreVertical, Clock, ChevronDown, ArrowRight, ToggleLeft, ToggleRight } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
 
 // Utility for hiding scrollbars
@@ -14,26 +14,32 @@ const scrollbarHideStyle = `
 `;
 
 export function PartnersScreen({ data }: { data: any }) {
-  const [selectedPartner, setSelectedPartner] = useState<any>(data.rows.find(r => r.name.includes('BlueRoute')) || {
-    id: 'PRT-001',
-    name: 'BlueRoute Logistics',
-    type: 'Vận chuyển',
-    status: 'Đang hoạt động',
-    hasPendingUpdate: true,
-    representative: 'Trần Văn B',
-    phone: '0987.654.321',
-    taxCode: '0102030405',
-    tone: 'active'
-  });
+  const [selectedPartner, setSelectedPartner] = useState<any>(null);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showAddPartnerModal, setShowAddPartnerModal] = useState(false);
+  const [showEditPartnerModal, setShowEditPartnerModal] = useState(false);
+  const [showToggleModal, setShowToggleModal] = useState(false);
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | null>(null);
   const [reason, setReason] = useState('');
+  const [toggleReason, setToggleReason] = useState('');
   const [newPartnerType, setNewPartnerType] = useState('');
   const [licensePlates, setLicensePlates] = useState<string[]>([]);
   const [newPlate, setNewPlate] = useState('');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('22:00');
+  const [partnerRows, setPartnerRows] = useState(data.rows);
+
+  const handleTogglePartner = () => {
+    const isLocked = selectedPartner.status === 'Đã khóa';
+    const newStatus = isLocked ? 'Đang hoạt động' : 'Đã khóa';
+    const newTone = isLocked ? 'active' : 'locked';
+    
+    setPartnerRows(partnerRows.map((r: any) => r.id === selectedPartner.id ? { ...r, status: newStatus, tone: newTone } : r));
+    setSelectedPartner({ ...selectedPartner, status: newStatus, tone: newTone });
+    setShowToggleModal(false);
+    setToggleReason('');
+    alert(`Đã ${isLocked ? 'mở khóa' : 'khóa'} đối tác thành công!`);
+  };
 
   const addLicensePlate = () => {
     if (newPlate.trim() && !licensePlates.includes(newPlate.trim().toUpperCase())) {
@@ -54,7 +60,7 @@ export function PartnersScreen({ data }: { data: any }) {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
       <style>{scrollbarHideStyle}</style>
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-800">Mạng lưới cung ứng</h1>
           <p className="text-slate-500 mt-2">Quản lý nông trại, hợp tác xã và đơn vị vận chuyển</p>
@@ -107,26 +113,27 @@ export function PartnersScreen({ data }: { data: any }) {
       <div className="flex items-start gap-6 relative">
         {/* Table View */}
         <div className={`transition-all duration-300 ${selectedPartner ? 'w-2/3' : 'w-full'} bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden`}>
-          <div className="grid grid-cols-7 gap-4 p-4 bg-slate-50/50 text-slate-500 font-bold uppercase text-xs tracking-wider border-b border-slate-100">
-            <div className="col-span-3">Đối tác</div>
-            <div>Loại hình</div>
-            <div>Mã số thuế</div>
+          <div className="grid grid-cols-[minmax(280px,1.7fr)_minmax(180px,1fr)_minmax(140px,0.7fr)_minmax(110px,0.5fr)_48px] gap-4 p-4 bg-slate-50/50 text-slate-500 font-bold uppercase text-xs tracking-wider border-b border-slate-100 items-center">
+            <div>Đối tác</div>
+            <div>Loại hình & MST</div>
             <div className="text-center">Trạng thái</div>
+            <div className="text-center">Khóa/Mở</div>
+            <div></div>
           </div>
           <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-            {data.rows.map((row: any) => (
+            {partnerRows.map((row: any) => (
               <div
                 key={row.id}
-                className={`grid grid-cols-7 gap-4 p-4 items-center hover:bg-slate-50 transition-colors cursor-pointer text-sm ${selectedPartner?.id === row.id ? 'bg-sage-50/30' : ''}`}
+                className={`grid grid-cols-[minmax(280px,1.7fr)_minmax(180px,1fr)_minmax(140px,0.7fr)_minmax(110px,0.5fr)_48px] gap-4 p-4 items-center hover:bg-slate-50 transition-colors cursor-pointer text-sm ${selectedPartner?.id === row.id ? 'bg-sage-50/30' : ''}`}
                 onClick={() => setSelectedPartner(row)}
               >
-                <div className="col-span-3 flex items-center gap-3">
+                <div className="flex items-center gap-3">
                   <div className={`px-2.5 py-1 text-xs font-bold whitespace-nowrap rounded ${row.type.includes('Nông') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
                     {row.type.substring(0, 2)}
                   </div>
                   <div>
                     <div className="font-bold text-slate-800 flex items-center gap-2">
-                      {row.name}
+                      <span className={row.status === 'Đã khóa' ? 'line-through text-slate-400' : ''}>{row.name}</span>
                       {row.pendingApproval && (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                           <ShieldAlert size={10} /> Cần duyệt
@@ -136,13 +143,29 @@ export function PartnersScreen({ data }: { data: any }) {
                     <div className="text-xs text-slate-500">{row.id}</div>
                   </div>
                 </div>
-                <div className="text-slate-600">{row.type}</div>
-                <div className="text-slate-500 font-mono text-xs">{row.taxCode}</div>
+                <div>
+                  <div className="text-slate-600 font-medium">{row.type}</div>
+                  <div className="text-slate-500 font-mono text-xs mt-0.5">{row.taxCode}</div>
+                </div>
                 <div className="flex justify-center">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${row.tone === 'active' ? 'bg-cyan-100 text-cyan-700 border border-cyan-200' : 'bg-amber-100 text-amber-700 border border-amber-200'
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${row.tone === 'active' ? 'bg-cyan-100 text-cyan-700 border border-cyan-200' : 
+                    row.tone === 'locked' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-amber-100 text-amber-700 border border-amber-200'
                     }`}>
                     {row.status}
                   </span>
+                </div>
+                <div className="flex justify-center items-center">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPartner(row);
+                      setShowToggleModal(true);
+                    }}
+                    className={`p-1 rounded-full transition-colors ${row.status !== 'Đã khóa' ? 'text-sage-500 hover:text-sage-600' : 'text-slate-300 hover:text-slate-400'}`}
+                    title={row.status !== 'Đã khóa' ? "Khóa đối tác" : "Mở khóa đối tác"}
+                  >
+                    {row.status !== 'Đã khóa' ? <ToggleRight size={36} strokeWidth={1.5} /> : <ToggleLeft size={36} strokeWidth={1.5} />}
+                  </button>
                 </div>
                 <div className="flex items-center justify-end gap-3">
                   <button
@@ -175,7 +198,7 @@ export function PartnersScreen({ data }: { data: any }) {
                 <h2 className="text-xl font-bold text-slate-800">{selectedPartner.name}</h2>
                 <p className="text-slate-500 text-sm mt-1">{selectedPartner.type} • {selectedPartner.taxCode || 'MST: 0102030405'}</p>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 items-end">
                 <button onClick={() => setSelectedPartner(null)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200 shadow-sm">
                   <X size={16} />
                 </button>
@@ -185,7 +208,10 @@ export function PartnersScreen({ data }: { data: any }) {
             <div className="p-6 flex-1 overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Thông tin liên hệ</h3>
-                <button className="text-xs font-bold text-sage-600 hover:text-sage-700 flex items-center gap-1">
+                <button 
+                  onClick={() => setShowEditPartnerModal(true)}
+                  className="text-xs font-bold text-sage-600 hover:text-sage-700 flex items-center gap-1"
+                >
                   <Edit2 size={12} /> Sửa
                 </button>
               </div>
@@ -392,7 +418,7 @@ export function PartnersScreen({ data }: { data: any }) {
         )}
       </div>
 
-      {/* Approval / Rejection Modal (UC40) */}
+      {/* Approval / Rejection Modal */}
       {showApprovalModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -443,6 +469,58 @@ export function PartnersScreen({ data }: { data: any }) {
                 }}
               >
                 Xác nhận {approvalAction === 'approve' ? 'phê duyệt' : 'từ chối'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toggle Partner Status Modal */}
+      {showToggleModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-xl shadow-sm border ${selectedPartner.status === 'Đã khóa' ? 'bg-white border-emerald-100 text-emerald-500' : 'bg-white border-red-100 text-red-500'}`}>
+                  {selectedPartner.status === 'Đã khóa' ? <CheckCircle2 size={20} /> : <ShieldAlert size={20} />}
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  {selectedPartner.status === 'Đã khóa' ? 'Xác nhận mở khóa' : 'Xác nhận khóa đối tác'}
+                </h3>
+              </div>
+              <button onClick={() => setShowToggleModal(false)} className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+                Bạn đang thực hiện thao tác <strong className={selectedPartner.status === 'Đã khóa' ? 'text-emerald-600' : 'text-red-600'}>{selectedPartner.status === 'Đã khóa' ? 'mở khóa' : 'khóa'}</strong> đối tác <strong className="text-slate-800">{selectedPartner.name}</strong>.
+                {selectedPartner.status !== 'Đã khóa' && ' Đối tác bị khóa sẽ không thể đăng nhập và mọi hoạt động liên kết mới sẽ bị chặn.'}
+              </p>
+
+              <div className="mb-2">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  Lý do / Ghi chú <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={toggleReason}
+                  onChange={(e) => setToggleReason(e.target.value)}
+                  className={`w-full p-3 bg-slate-50 border rounded-xl text-sm outline-none resize-none h-28 transition-all ${!toggleReason.trim() ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-slate-200 focus:border-sage-500 focus:ring-2 focus:ring-sage-500/30'}`}
+                  placeholder="Bắt buộc nhập lý do để ghi nhận vào Audit Log..."
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setShowToggleModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl shadow-sm transition-colors">
+                Hủy
+              </button>
+              <button
+                className={`px-5 py-2.5 text-sm font-bold text-white rounded-xl shadow-sm transition-colors ${selectedPartner.status === 'Đã khóa' ? 'bg-sage-600 hover:bg-sage-700' : 'bg-red-600 hover:bg-red-700'} ${(!toggleReason.trim()) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={!toggleReason.trim()}
+                onClick={handleTogglePartner}
+              >
+                Xác nhận {selectedPartner.status === 'Đã khóa' ? 'mở khóa' : 'khóa'}
               </button>
             </div>
           </div>
@@ -648,6 +726,98 @@ export function PartnersScreen({ data }: { data: any }) {
                 className="px-6 py-3 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 rounded-xl transition-colors shadow-sm"
               >
                 Lưu thông tin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Partner Modal */}
+      {showEditPartnerModal && selectedPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-white shadow-sm border border-slate-200 text-sage-600">
+                  <Edit2 size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-800 tracking-tight">Sửa thông tin đối tác</h3>
+                  <p className="text-sm text-slate-500 font-medium">Cập nhật thông tin liên hệ và giấy phép</p>
+                </div>
+              </div>
+              <button onClick={() => setShowEditPartnerModal(false)} className="text-slate-400 hover:text-slate-600 p-2 bg-white rounded-xl border border-transparent hover:border-slate-200 shadow-sm transition-all">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Tên đối tác</label>
+                    <input type="text" defaultValue={selectedPartner.name} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Loại hình</label>
+                    <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800">
+                      <option value="Nông trại" selected={selectedPartner.type === 'Nông trại'}>Nông trại</option>
+                      <option value="Vận chuyển" selected={selectedPartner.type === 'Vận chuyển'}>Vận chuyển</option>
+                      <option value="Cửa hàng" selected={selectedPartner.type === 'Cửa hàng'}>Cửa hàng</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Mã số thuế</label>
+                    <input type="text" defaultValue={selectedPartner.taxCode || '0102030405'} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Người đại diện</label>
+                    <input type="text" defaultValue={selectedPartner.representative || 'Nguyễn Văn A'} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Số điện thoại</label>
+                    <input type="text" defaultValue={selectedPartner.phone || '0901.234.567'} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Email liên hệ</label>
+                    <input type="email" defaultValue={`contact@${(selectedPartner?.id || 'PRT-000').toLowerCase()}.vn`} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Địa chỉ đăng ký</label>
+                  <input type="text" defaultValue="123 Đường Nông Nghiệp, Huyện Củ Chi, TP. Hồ Chí Minh" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                </div>
+
+                {selectedPartner.type.includes('Vận chuyển') && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Khu vực phục vụ</label>
+                    <input type="text" defaultValue="Miền Nam, Miền Trung" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
+              <button 
+                onClick={() => setShowEditPartnerModal(false)}
+                className="px-6 py-2.5 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                onClick={() => {
+                  setShowEditPartnerModal(false);
+                }}
+                className="px-6 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
+              >
+                <CheckCircle2 size={18} /> Cập nhật
               </button>
             </div>
           </div>

@@ -260,7 +260,7 @@
       },
       {
         "timestamp": "2026-04-29 10:15",
-        "actor": "Admin_Super",
+        "actor": "Quản trị viên (Trần Quang)",
         "action": "Khóa tài khoản",
         "batchId": "ACC-018",
         "severity": "high",
@@ -268,7 +268,7 @@
       },
       {
         "timestamp": "2026-04-29 11:30",
-        "actor": "Admin_Super",
+        "actor": "Quản trị viên (Trần Quang)",
         "action": "Phân quyền",
         "batchId": "ACC-014",
         "severity": "info",
@@ -284,7 +284,7 @@
       },
       {
         "timestamp": "2026-04-29 15:20",
-        "actor": "Admin_Super",
+        "actor": "Quản trị viên (Trần Quang)",
         "action": "Thay đổi cài đặt",
         "batchId": "SYS-CONF",
         "severity": "warning",
