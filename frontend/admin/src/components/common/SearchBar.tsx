@@ -3,9 +3,11 @@ import { useState } from 'react';
 
 interface SearchBarProps {
   placeholder?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-export function SearchBar({ placeholder = 'Tìm kiếm lô hàng, tài khoản, audit log...' }: SearchBarProps) {
+export function SearchBar({ placeholder = 'Tìm kiếm lô hàng, tài khoản, audit log...', value, onChange }: SearchBarProps) {
   const [isFocused, setIsFocused] = useState(false);
 
   return (
@@ -20,6 +22,8 @@ export function SearchBar({ placeholder = 'Tìm kiếm lô hàng, tài khoản, 
       <input
         type="text"
         placeholder={placeholder}
+        value={value}
+        onChange={onChange}
         className="flex-1 px-3 py-2.5 text-sm bg-transparent outline-none text-slate-700 placeholder-slate-400"
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}

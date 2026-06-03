@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Calendar, Tag, MapPin, Truck, AlertCircle, CheckCircle2, User, Package, Clock, BarChart3, X, Leaf, FileText, History, ShieldCheck, Box, Navigation, QrCode } from 'lucide-react';
+import { Calendar, Tag, MapPin, Truck, CheckCircle2, User, Package, Clock, BarChart3, X, Leaf, FileText, History, ShieldCheck, Box, Navigation, AlertCircle, QrCode } from "lucide-react";
+import { api } from "../../config/api";
 import { SearchBar } from '../../components/common/SearchBar';
 
 export function ShippingScreen({ data, targetShipmentId }: { data: any, targetShipmentId?: string | null }) {
@@ -10,10 +11,16 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
   const [showCertModal, setShowCertModal] = useState(false);
 
   const [selectedShipment, setSelectedShipment] = useState<any>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showQRModal, setShowQRModal] = useState(false);
+  
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [detailTab, setDetailTab] = useState<'shipping' | 'origin'>('shipping');
   const [activeCheckpoint, setActiveCheckpoint] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Tất cả trạng thái');
+  const [areaFilter, setAreaFilter] = useState('Tất cả khu vực');
+  const [dateFilter, setDateFilter] = useState('Tất cả');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
 
   /** Chuẩn hóa mã chuyến xe thành mã lô hàng để tránh lỗi khi dữ liệu thiếu id. */
   const getBatchCode = (shipment: any) => {
@@ -23,7 +30,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
   const isCreatedBatchStatus = (status?: string) => {
     const normalizedStatus = String(status ?? '').trim();
-    return ['CREATED', 'Sẵn sàng', 'Chờ xử lý', 'Đang chuẩn bị', 'Chưa vận chuyển'].includes(normalizedStatus);
+    return ['CREATED', 'Sẵn sàng', 'Chờ xử lý', 'Đang chuẩn bị', 'Chưa vận chuyển', 'Mới tạo', 'Chờ vận chuyển', 'Chờ lấy hàng'].includes(normalizedStatus);
   };
 
   const canModifyShipment = (shipment?: any) => {
@@ -137,7 +144,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
     }
   };
 
-  const handleSelectShipment = (shipment: any) => {
+  const handleSelectMockShipment = (shipment: any) => {
     const isCancelled = shipment.tone === 'locked' || shipment.status === 'Đã hủy' || shipment.status === 'Hủy bỏ';
     const statusText = isCancelled ? 'Đã hủy' : shipment.status;
     const toneValue = isCancelled ? 'locked' : shipment.tone;
@@ -176,7 +183,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
       // Tìm lô hàng trong danh sách hoặc tạo mock dựa trên mã LOT truyền sang từ Reports
       const existing = data.shipments.find((s: any) => s.id === targetShipmentId);
       if (existing) {
-        handleSelectShipment(existing);
+        handleSelectMockShipment(existing);
       } else {
         const mockShipment = {
           id: targetShipmentId.replace('LOT', 'TRK'), // Chuyển đổi mã lô thành mã chuyến xe
@@ -185,10 +192,239 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
           eta: "2h 10p",
           tone: "active"
         };
-        handleSelectShipment(mockShipment);
+        handleSelectMockShipment(mockShipment);
       }
     }
   }, [targetShipmentId]);
+
+  const loadData = async () => {
+    try {
+      const [{ data: batchesData }, { data: transportsData }] = await Promise.all([
+        api.get("/batches"),
+        api.get("/transports")
+      ]);
+
+      const getVietnameseStatus = (status: string) => {
+        switch(status) {
+          case "CREATED": return "Mới tạo";
+          case "AT_WAREHOUSE": return "Chờ vận chuyển";
+          case "IN_TRANSIT": return "Đang vận chuyển";
+          case "ARRIVED": return "Đã đến kho";
+          case "DELIVERED": return "Đã giao";
+          case "CANCELLED": return "Đã hủy";
+          case "PENDING_PICKUP": return "Chờ lấy hàng";
+          default: return status;
+        }
+      };
+
+      const getTone = (status: string) => {
+        if (status === "DELIVERED") return "success";
+        if (["IN_TRANSIT", "ARRIVED", "AT_WAREHOUSE", "PENDING_PICKUP"].includes(status)) return "active";
+        if (["CANCELLED"].includes(status)) return "locked";
+        return "neutral";
+      };
+
+      const rows = batchesData.map((batch: any) => {
+         const transport = transportsData.find((t: any) => t.batch?.batchId === batch.batchId);
+         if (transport) {
+            return {
+               id: "BF-TRK-" + String(transport.transportId).padStart(4, "0"),
+               title: "BF-TRK-" + String(transport.transportId).padStart(4, "0"),
+               batchCode: batch.batchCode,
+               route: `${transport.shipperPartner?.partnerName ?? "N/A"} - ${transport.receiverPartner?.partnerName ?? "N/A"}`,
+               status: getVietnameseStatus(transport.transportStatus),
+               eta: transport.expectedArrival ? new Date(transport.expectedArrival).toLocaleDateString("vi-VN") : "--",
+               tone: getTone(transport.transportStatus),
+               transport,
+               batch,
+               partner: transport.transporterPartner?.partnerName || "Chưa phân công"
+            };
+         } else {
+            return {
+               id: batch.batchCode,
+               title: batch.batchCode,
+               batchCode: batch.batchCode,
+               route: "Chưa có lộ trình",
+               status: getVietnameseStatus(batch.status),
+               eta: "--",
+               tone: getTone(batch.status),
+               batch,
+               partner: "N/A"
+            };
+         }
+      });
+      setShipmentRows(rows);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSelectShipment = async (shipment: any) => {
+    try {
+      const batchStatus = shipment.batch?.status;
+      const transportStatus = shipment.transport?.transportStatus;
+
+      const history = [
+        {
+          id: 1,
+          date: shipment.batch?.createdAt ? new Date(shipment.batch.createdAt).toLocaleString("vi-VN") : "--",
+          title: "Khởi tạo lô hàng",
+          actor: shipment.batch?.farmPartner?.partnerName || "Nông trại",
+          description: "Lô hàng được khởi tạo.",
+          type: "farm",
+          icon: Leaf,
+          color: "bg-emerald-100 text-emerald-600",
+          completed: true
+        },
+        {
+          id: 2,
+          date: shipment.batch?.certificates?.length > 0 ? "Đã xác nhận" : "--",
+          title: "Xác nhận chứng chỉ",
+          actor: "Hệ thống kiểm định",
+          description: "Xác nhận lô hàng đạt chuẩn.",
+          type: "cert",
+          icon: FileText,
+          color: "bg-blue-100 text-blue-600",
+          completed: shipment.batch?.certificates?.length > 0
+        },
+        {
+          id: 3,
+          date: shipment.transport?.createdAt ? new Date(shipment.transport.createdAt).toLocaleString("vi-VN") : "--",
+          title: "Đơn vị vận chuyển tiếp nhận",
+          actor: shipment.partner || "Đơn vị VC",
+          description: "Tiếp nhận lô hàng tại điểm thu gom.",
+          type: "transit",
+          icon: Truck,
+          color: "bg-amber-100 text-amber-600",
+          completed: !!shipment.transport
+        },
+        {
+          id: 4,
+          date: shipment.transport?.actualDeparture ? new Date(shipment.transport.actualDeparture).toLocaleString("vi-VN") : "--",
+          title: "Đang vận chuyển",
+          actor: "Tài xế",
+          description: "Lô hàng đang trong quá trình di chuyển.",
+          type: "transit",
+          icon: CheckCircle2,
+          color: "bg-emerald-100 text-emerald-600",
+          completed: ["IN_TRANSIT", "ARRIVED", "DELIVERED"].includes(transportStatus)
+        },
+        {
+          id: 5,
+          date: shipment.transport?.actualArrival ? new Date(shipment.transport.actualArrival).toLocaleString("vi-VN") : "Dự kiến " + (shipment.eta !== "--" ? shipment.eta : "--"),
+          title: "Cửa hàng xác nhận",
+          actor: shipment.batch?.storePartner?.partnerName || "Cửa hàng đích",
+          description: "Xác nhận giao hàng và nhập kho.",
+          type: "store",
+          icon: Box,
+          color: "bg-slate-100 text-slate-400",
+          completed: transportStatus === "DELIVERED" || batchStatus === "DELIVERED"
+        }
+      ];
+
+      const traceData = {
+         productName: shipment.batch?.productName ?? "N/A",
+         farmName: shipment.batch?.farmPartner?.partnerName || "N/A",
+         farmAddress: shipment.batch?.farmPartner?.address || "N/A",
+         certCode: shipment.batch?.certificates?.[0]?.certificate?.certType || "Chưa có",
+         farmingMethod: "Hữu cơ",
+         harvestDate: shipment.batch?.harvestDate ? new Date(shipment.batch.harvestDate).toLocaleDateString("vi-VN") : "N/A",
+         packDate: shipment.batch?.packagedDate ? new Date(shipment.batch.packagedDate).toLocaleDateString("vi-VN") : "N/A",
+         quantity: `${shipment.batch?.quantity ?? 0} kg`,
+         history
+      };
+
+      const checkpoints = shipment.transport?.checkpoints?.map((cp: any) => ({
+         ...cp,
+         sequence: cp.sequence,
+         location: cp.locationName || `Trạm kiểm tra số ${cp.sequence}`,
+         time: cp.reportedAt ? new Date(cp.reportedAt).toLocaleString("vi-VN") : "Chưa cập nhật",
+         temperature: cp.temperature ? `${cp.temperature}°C` : "N/A",
+         updatedBy: "Hệ thống",
+         details: cp.note || "Thông số bình thường",
+         images: []
+      })) || [];
+
+      setSelectedShipment({
+        ...shipment,
+        subtitle: shipment.route,
+        traceability: traceData,
+        checkpoints: checkpoints,
+        currentIndex: checkpoints.length > 0 ? checkpoints.length - 1 : 0
+      });
+      setDetailTab("shipping");
+      setActiveCheckpoint(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (targetShipmentId && shipmentRows.length > 0) {
+      const existing = shipmentRows.find((s: any) => s.id === targetShipmentId);
+      if (existing) {
+        handleSelectShipment(existing);
+      }
+    }
+  }, [targetShipmentId, shipmentRows]);
+
+  const filteredShipments = shipmentRows.filter((shipment: any) => {
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery || 
+      shipment.title.toLowerCase().includes(searchLower) ||
+      (shipment.batchCode && shipment.batchCode.toLowerCase().includes(searchLower)) ||
+      (shipment.route && shipment.route.toLowerCase().includes(searchLower));
+      
+    // Logic for Status Filter with grouping
+    let matchesStatus = true;
+    if (statusFilter !== "Tất cả trạng thái") {
+      if (statusFilter === "Mới tạo") {
+        matchesStatus = ["Mới tạo", "Chờ vận chuyển", "Chờ lấy hàng"].includes(shipment.status);
+      } else if (statusFilter === "Đang vận chuyển") {
+        matchesStatus = ["Đang vận chuyển", "Đã đến kho"].includes(shipment.status);
+      } else if (statusFilter === "Đã giao") {
+        matchesStatus = shipment.status === "Đã giao";
+      } else if (statusFilter === "Đã hủy") {
+        matchesStatus = ["Đã hủy", "Hủy bỏ", "Đã khóa"].includes(shipment.status) || shipment.tone === "locked";
+      }
+    }
+
+    // Logic for Area Filter
+    let matchesArea = true;
+    if (areaFilter !== "Tất cả khu vực") {
+      const addressString = `${shipment.batch?.farmPartner?.address || ""} ${shipment.transport?.receiverPartner?.address || ""} ${shipment.route || ""}`.toLowerCase();
+      if (areaFilter === "Miền Bắc") {
+        matchesArea = ["hà nội", "hải phòng", "quảng ninh", "bắc ninh", "hà giang", "hải dương", "hưng yên", "thái bình"].some(p => addressString.includes(p));
+      } else if (areaFilter === "Miền Trung") {
+        matchesArea = ["đà nẵng", "huế", "quảng nam", "quảng ngãi", "nghệ an", "hà tĩnh", "thanh hóa", "bình định", "phú yên", "khánh hòa", "nha trang"].some(p => addressString.includes(p));
+      } else if (areaFilter === "Miền Nam") {
+        matchesArea = ["hồ chí minh", "hcm", "sài gòn", "bình dương", "đồng nai", "cần thơ", "đà lạt", "lâm đồng", "long an", "tiền giang", "vũng tàu"].some(p => addressString.includes(p));
+      }
+    }
+
+    // Logic for Date Filter
+    let matchesDate = true;
+    if (dateFilter !== "Tất cả") {
+      const createdAt = new Date(shipment.batch?.createdAt || shipment.transport?.createdAt || Date.now());
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (dateFilter === "Hôm nay") {
+        matchesDate = diffDays <= 1;
+      } else if (dateFilter === "7 ngày qua") {
+        matchesDate = diffDays <= 7;
+      } else if (dateFilter === "30 ngày qua") {
+        matchesDate = diffDays <= 30;
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesArea && matchesDate;
+  });
 
   const canModifySelectedShipment = canModifyShipment(selectedShipment);
 
@@ -199,16 +435,13 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
           <h1 className="text-3xl font-bold text-slate-800">Quản lý lô hàng & vận chuyển</h1>
           <p className="text-slate-500 mt-1">Theo dõi lô hàng, nguồn gốc, QR truy xuất và hành trình vận chuyển trong chuỗi cung ứng.</p>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl transition-colors shadow-sm">
-          <Plus size={18} />
-          Tạo đơn vận chuyển
-        </button>
+        
       </header>
 
       {/* Shipping Filters */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[250px]">
-          <SearchBar placeholder="Tìm mã lô hàng, mã vận đơn, tài xế, nhà cung cấp..." />
+          <SearchBar placeholder="Tìm mã lô hàng, mã vận đơn, tài xế, nhà cung cấp..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
 
         <div className="hidden lg:block w-px h-8 bg-slate-200 mx-1"></div>
@@ -225,18 +458,18 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
         <div className="relative min-w-[150px]">
           <Tag size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tất cả trạng thái</option>
+            <option>Mới tạo</option>
             <option>Đang vận chuyển</option>
             <option>Đã giao</option>
-            <option>Chờ xử lý</option>
             <option>Đã hủy</option>
           </select>
         </div>
 
         <div className="relative min-w-[150px]">
           <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tất cả khu vực</option>
             <option>Miền Bắc</option>
             <option>Miền Trung</option>
@@ -248,7 +481,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
       <div className="flex items-start gap-6 relative">
         {/* Shipment List */}
         <div className={`transition-all duration-300 ${selectedShipment ? 'w-1/3' : 'w-full'} flex flex-col gap-3 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar`}>
-          {shipmentRows.map((shipment: any) => {
+          {filteredShipments.map((shipment: any) => {
             const isCancelled = shipment.tone === 'locked' || shipment.status === 'Đã khóa' || shipment.status === 'Hủy bỏ' || shipment.status === 'Đã hủy';
             const statusLabel = isCancelled ? 'Đã hủy' : shipment.status;
 
@@ -331,7 +564,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
             {/* Tab Content */}
             <div className="p-6 max-h-[650px] overflow-y-auto custom-scrollbar bg-white">
-              {detailTab === 'shipping' && (
+              {detailTab === "shipping" && (
                 (selectedShipment.status === 'Chờ xử lý' || selectedShipment.status === 'Đang chuẩn bị' || selectedShipment.status === 'Chưa vận chuyển') ? (
                   <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in duration-300 h-[600px]">
                     <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-sm">
@@ -341,10 +574,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                     <p className="text-sm text-slate-500 mb-6 max-w-md leading-relaxed">
                       Lô hàng này đã sẵn sàng nhưng chưa được điều phối vận chuyển. Vui lòng tạo đơn để đối tác có thể tiếp nhận và bắt đầu hành trình.
                     </p>
-                    <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-6 py-3 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0">
-                      <Plus size={18} />
-                      Tạo đơn vận chuyển ngay
-                    </button>
+                    
                   </div>
                 ) : (
                 <div className="animate-in fade-in duration-300 space-y-6">
@@ -368,14 +598,14 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                       <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-sage-600"><User size={20} /></div>
                       <div className="min-w-0">
                         <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate">Tài xế</div>
-                        <div className="text-sm font-bold text-slate-800 truncate">Trần Văn B</div>
+                        <div className="text-sm font-bold text-slate-800 truncate">{selectedShipment.transport?.driverName || 'Chưa phân công'}</div>
                       </div>
                     </div>
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-amber-500"><Truck size={20} /></div>
                       <div className="min-w-0">
                         <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate">Phương tiện</div>
-                        <div className="text-sm font-bold text-slate-800 truncate">51C-123.45</div>
+                        <div className="text-sm font-bold text-slate-800 truncate">{selectedShipment.transport?.licensePlate || '--'}</div>
                       </div>
                     </div>
                   </div>
@@ -627,8 +857,9 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                 )}
                 {detailTab === 'shipping' && (
                   <button
-                    disabled={selectedShipment.status === 'Đã hủy'}
-                    className={`px-6 py-2.5 font-bold rounded-xl shadow-sm transition-all text-sm ${selectedShipment.status === 'Đã hủy'
+                    onClick={() => setShowDeliveryModal(true)}
+                    disabled={selectedShipment.status !== 'Đã giao'}
+                    className={`px-6 py-2.5 font-bold rounded-xl shadow-sm transition-all text-sm ${selectedShipment.status !== 'Đã giao'
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
                       : 'bg-sage-600 text-white hover:bg-sage-700 active:scale-95'
                       }`}
@@ -762,9 +993,9 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
             <div className="p-6 flex flex-col items-center bg-white">
               {/* QR Code Placeholder */}
               <div className="w-64 h-64 border-2 border-slate-200 rounded-2xl flex items-center justify-center bg-white shadow-sm mb-6 relative overflow-hidden group">
-                <div className="absolute inset-0 bg-slate-50/50 flex items-center justify-center">
-                  <QrCode size={160} strokeWidth={1} className="text-slate-800" />
-                </div>
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(window.location.origin + '/trace/' + selectedShipment.id)}`} alt="QR Code" className="w-full h-full object-contain p-4 relative z-10" />
+
+
                 <div className="absolute inset-0 border-2 border-transparent group-hover:border-sage-400/30 rounded-2xl transition-colors"></div>
               </div>
 
@@ -794,7 +1025,24 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
             <div className="p-5 border-t border-slate-200 flex justify-center gap-4 bg-slate-50">
               <button
-                onClick={() => setShowQRModal(false)}
+                onClick={async () => {
+                  try {
+                    const url = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(window.location.origin + '/trace/' + selectedShipment.id)}`;
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    const objectUrl = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = objectUrl;
+                    link.download = `QR_${selectedShipment.id}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(objectUrl);
+                  } catch (error) {
+                    console.error('Error downloading QR:', error);
+                    alert('Lỗi khi tải hình ảnh. Vui lòng thử lại sau.');
+                  }
+                }}
                 className="px-6 py-3 text-sm font-bold text-slate-800 bg-white border-2 border-slate-800 hover:bg-slate-100 transition-all w-1/2 shadow-sm"
               >
                 Tải file hình ảnh
@@ -918,6 +1166,65 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
         </div>
       )}
 
-    </div>
+    
+      {/* Delivery Confirmation Modal */}
+      {showDeliveryModal && selectedShipment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sage-100 text-sage-600 flex items-center justify-center">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800">Xác Nhận Nhận Hàng</h3>
+                  <p className="text-xs text-slate-500 font-medium">Mã vận đơn: {selectedShipment.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDeliveryModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-emerald-50 rounded-xl p-4 flex items-start gap-3 border border-emerald-100">
+                <CheckCircle2 className="text-emerald-500 mt-0.5" size={18} />
+                <div>
+                  <div className="text-sm font-bold text-emerald-800">Đã giao hàng thành công</div>
+                  <div className="text-xs text-emerald-600 mt-1">Lô hàng đã được kiểm tra và nhập kho đầy đủ theo tiêu chuẩn.</div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500 font-medium">Người xác nhận:</span>
+                  <span className="text-sm font-bold text-slate-800">{selectedShipment.transport?.deliveryConfirmer?.fullName || 'Hệ thống / Quản lý kho'}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500 font-medium">Tên kho nhận:</span>
+                  <span className="text-sm font-bold text-slate-800">{selectedShipment.transport?.receiverPartner?.partnerName || 'Kho đích'}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500 font-medium">Thời gian nhận:</span>
+                  <span className="text-sm font-bold text-slate-800">{selectedShipment.transport?.actualArrival ? new Date(selectedShipment.transport.actualArrival).toLocaleString("vi-VN") : 'Chưa cập nhật'}</span>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={() => setShowDeliveryModal(false)}
+                  className="px-6 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-200 transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }
