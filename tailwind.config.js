@@ -7,8 +7,8 @@ export default {
         ink: '#233044',
         muted: '#8fa1b6',
         line: '#d9e5ef',
-        primary: '#0ea5e9',
-        primaryDark: '#0575bd',
+        primary: '#16a34a',
+        primaryDark: '#15803d',
         leaf: '#2e7d32',
         clay: '#8d6e63',
         paper: '#f8fbfd'

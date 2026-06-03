@@ -84,7 +84,7 @@ export function CustomerHome({ batches }: { batches: Batch[] }) {
         action={<Link to="/settings" className="icon-btn"><Settings size={20} /></Link>}
       />
       <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-        <section className="rounded-2xl bg-gradient-to-br from-green-50 via-sky-50 to-white p-5 text-center shadow-card">
+        <section className="rounded-2xl bg-gradient-to-br from-green-50 via-green-50 to-white p-5 text-center shadow-card">
           <div className="mx-auto mb-4 grid h-24 w-24 place-items-center rounded-full border border-green-100 bg-white text-leaf shadow-card">
             <QrCode size={48} />
           </div>

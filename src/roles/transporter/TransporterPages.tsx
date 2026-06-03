@@ -270,7 +270,7 @@ export function TransportCheckpointUpdate() {
                 {checkpoints.map((checkpoint) => {
                   const isCurrent = checkpoint.id === currentCheckpoint?.id;
                   return (
-                    <tr key={checkpoint.id} className={isCurrent ? 'bg-sky-50' : ''}>
+                    <tr key={checkpoint.id} className={isCurrent ? 'bg-green-50' : ''}>
                       <td className="border-b border-line px-2 py-3 font-extrabold text-ink">{checkpointCode(checkpoint.sequence)}</td>
                       <td className="border-b border-line px-2 py-3 text-slate-600">{checkpoint.locationName}</td>
                       <td className="border-b border-line px-2 py-3 text-slate-600">{temperatureLabel(checkpoint.temperature)}</td>
@@ -299,7 +299,7 @@ export function TransportCheckpointUpdate() {
           <div className="field mb-3">
             <MapPin size={18} />
             <input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder="Nhập vị trí hoặc tọa độ GPS" disabled={!canEditCheckpoint || saving} />
-            <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-50 text-primary disabled:opacity-50" aria-label="Tự cập nhật GPS" disabled={!canEditCheckpoint || saving}>
+            <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-green-50 text-primary disabled:opacity-50" aria-label="Tự cập nhật GPS" disabled={!canEditCheckpoint || saving}>
               <LocateFixed size={17} />
             </button>
           </div>
@@ -315,7 +315,7 @@ export function TransportCheckpointUpdate() {
           <label className="mb-3 flex min-h-12 items-center gap-3 rounded-xl border border-line bg-slate-50 px-3 text-sm font-bold text-ink">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-sky-500"
+              className="h-4 w-4 accent-green-500"
               checked={arrivedWarehouse}
               onChange={(event) => setArrivedWarehouse(event.target.checked)}
               disabled={!canEditCheckpoint || saving}

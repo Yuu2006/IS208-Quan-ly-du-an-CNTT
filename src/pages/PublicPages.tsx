@@ -192,7 +192,7 @@ export function Login() {
   const { login, registerCustomer } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [registerForm, setRegisterForm] = useState({
     fullName: '',
@@ -237,14 +237,14 @@ export function Login() {
       return;
     }
 
-    const ok = await login(email, password);
+    const ok = await login(username, password);
     setLoading(false);
     if (ok) navigate('/', { replace: true });
     else setError('Vui lòng kiểm tra email hoặc mật khẩu.');
   }
 
   return (
-    <div className="flex min-h-full flex-col overflow-y-auto bg-[radial-gradient(circle_at_80%_10%,#e4f7ff_0,#fff_38%,#f7fbff_100%)] px-6 py-10">
+    <div className="flex min-h-full flex-col overflow-y-auto bg-[radial-gradient(circle_at_80%_10%,#e8f8ee_0,#fff_38%,#f6fcf8_100%)] px-6 py-10">
       <Link to="/" className="icon-btn absolute left-5 top-5" aria-label="Quay lại trang quét mã">
         <ChevronLeft size={22} />
       </Link>
@@ -254,14 +254,14 @@ export function Login() {
             <Leaf size={38} strokeWidth={1.8} />
           </div>
           <h1 className="text-2xl font-extrabold tracking-[0] text-ink">BLUEFOOD</h1>
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary">Phân quyền truy xuất chuỗi cung ứng</p>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-leaf">Phân quyền truy xuất chuỗi cung ứng</p>
         </div>
 
-        <form onSubmit={submit} className="rounded-2xl border border-sky-100 bg-white/82 p-5 shadow-card backdrop-blur">
+        <form onSubmit={submit} className="rounded-2xl border border-green-100 bg-white/82 p-5 shadow-card backdrop-blur">
           <div className="mb-5">
             <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-extrabold">
-              <button type="button" className={`min-h-10 rounded-lg ${mode === 'login' ? 'bg-white text-primary shadow-card' : 'text-muted'}`} onClick={() => { setMode('login'); setError(''); }}>Đăng nhập</button>
-              <button type="button" className={`min-h-10 rounded-lg ${mode === 'register' ? 'bg-white text-primary shadow-card' : 'text-muted'}`} onClick={() => { setMode('register'); setError(''); }}>Đăng ký</button>
+              <button type="button" className={`min-h-10 rounded-lg ${mode === 'login' ? 'bg-white text-leaf shadow-card' : 'text-muted'}`} onClick={() => { setMode('login'); setError(''); }}>Đăng nhập</button>
+              <button type="button" className={`min-h-10 rounded-lg ${mode === 'register' ? 'bg-white text-leaf shadow-card' : 'text-muted'}`} onClick={() => { setMode('register'); setError(''); }}>Đăng ký</button>
             </div>
           </div>
 
@@ -270,7 +270,7 @@ export function Login() {
               <label className="form-label">Tên đăng nhập</label>
               <div className="field">
                 <User size={18} />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Ví dụ: khachhang01" autoComplete="username" />
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Ví dụ: khachhang01" autoComplete="username" />
               </div>
               <label className="form-label">Mật khẩu</label>
               <div className="field">
@@ -345,14 +345,14 @@ export function Landing() {
     <div className="flex min-h-full flex-col bg-paper">
       <AppHeader title="BlueFood" subtitle="Mobile web truy xuất nguồn gốc" icon={<Leaf size={22} />} action={<Link to="/auth/login" className="icon-btn"><UserCircle size={22} /></Link>} />
       <div className="flex flex-1 items-start overflow-y-auto px-5 py-5">
-        <section className="rounded-2xl bg-gradient-to-br from-green-50 via-sky-50 to-white p-5 text-center">
+        <section className="rounded-2xl bg-gradient-to-br from-green-50 via-green-50 to-white p-5 text-center">
           <h2 className="text-3xl font-extrabold leading-tight text-leaf">Quét để hiểu thực phẩm của bạn</h2>
           <p className="mt-2 text-sm text-slate-600">Theo dõi từng nguyên liệu từ nông trại đến bàn ăn một cách minh bạch.</p>
           <div className="relative mx-auto my-6 grid h-40 w-40 place-items-center rounded-full border-2 border-green-100 bg-white shadow-card">
             <QrCode size={74} className="text-leaf" />
             <span className="absolute bottom-3 rounded-full bg-white px-3 py-1 text-xs font-bold text-emerald-600 shadow-card">Verified</span>
           </div>
-          <div className="rounded-2xl border border-sky-100 bg-white/80 p-3 shadow-card">
+          <div className="rounded-2xl border border-green-100 bg-white/80 p-3 shadow-card">
             <Link to="/auth/login" className="primary-btn mb-3 flex w-full items-center justify-center gap-2">
               <UserCircle size={19} /> Đăng nhập
             </Link>
@@ -499,7 +499,7 @@ export function Scanner() {
 
   return (
     <div className="relative flex min-h-full flex-col bg-slate-950 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(14,165,233,.18),transparent_28%),linear-gradient(135deg,#111827,#020617)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(34,197,94,.18),transparent_28%),linear-gradient(135deg,#111827,#020617)]" />
       <div className="relative z-10 flex items-center justify-between px-5 py-5">
         <Link to={backTarget} className="icon-btn bg-white/10 text-white"><ChevronLeft /></Link>
         <h1 className="font-bold">Quét mã QR</h1>
@@ -603,7 +603,7 @@ export function Trace() {
     <div className="min-h-full bg-paper">
       <AppHeader title="Chuỗi cung ứng" subtitle={`Lô #${batch.batchCode}`} back action={<button className="icon-btn"><QrCode size={20} /></button>} />
       <div className="space-y-5 overflow-y-auto px-5 py-5">
-        <section className="rounded-2xl bg-gradient-to-br from-green-50 to-sky-50 p-5">
+        <section className="rounded-2xl bg-gradient-to-br from-green-50 to-green-50 p-5">
           <p className="text-xs font-semibold text-muted">{batch.productType}</p>
           <h2 className="mt-1 text-3xl font-extrabold text-leaf">{batch.productName}</h2>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -641,7 +641,7 @@ export function Trace() {
             </div>
 
             {selectedCertificate ? (
-              <div className="rounded-xl border border-sky-100 bg-white p-4">
+              <div className="rounded-xl border border-green-100 bg-white p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-extrabold text-ink">{selectedCertificate.name}</p>
@@ -657,7 +657,7 @@ export function Trace() {
             ) : (
               <div className="space-y-3">
                 {batch.certifications.map((cert) => (
-                  <div key={cert.id} className="rounded-xl border border-sky-100 bg-white p-4">
+                  <div key={cert.id} className="rounded-xl border border-green-100 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-extrabold text-ink">{cert.name}</p>
@@ -665,7 +665,7 @@ export function Trace() {
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge tone={certificateTones[cert.status]}>{certificateLabels[cert.status]}</Badge>
-                        <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-sky-100 bg-sky-50 text-primary" onClick={() => setSelectedCertificate(cert)} aria-label={`Xem chi tiết ${cert.name}`}>
+                        <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-green-100 bg-green-50 text-primary" onClick={() => setSelectedCertificate(cert)} aria-label={`Xem chi tiết ${cert.name}`}>
                           <Eye size={16} />
                         </button>
                       </div>

@@ -211,7 +211,7 @@ export function PaginationControls({ page, pageCount, onPageChange }: { page: nu
     <div className="mt-4 flex items-center justify-between rounded-xl border border-line bg-white px-3 py-2 shadow-card">
       <button
         type="button"
-        className="grid h-9 w-9 place-items-center rounded-full bg-sky-50 text-primary disabled:bg-slate-50 disabled:text-muted"
+        className="grid h-9 w-9 place-items-center rounded-full bg-green-50 text-primary disabled:bg-slate-50 disabled:text-muted"
         disabled={page <= 1}
         onClick={() => onPageChange(Math.max(1, page - 1))}
         aria-label="Trang trước"
@@ -221,7 +221,7 @@ export function PaginationControls({ page, pageCount, onPageChange }: { page: nu
       <span className="text-xs font-extrabold text-muted">Trang {page}/{pageCount}</span>
       <button
         type="button"
-        className="grid h-9 w-9 place-items-center rounded-full bg-sky-50 text-primary disabled:bg-slate-50 disabled:text-muted"
+        className="grid h-9 w-9 place-items-center rounded-full bg-green-50 text-primary disabled:bg-slate-50 disabled:text-muted"
         disabled={page >= pageCount}
         onClick={() => onPageChange(Math.min(pageCount, page + 1))}
         aria-label="Trang sau"
@@ -348,7 +348,7 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
           <input className="input mb-3" value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Đà Lạt, Lâm Đồng" />
           <label className="form-label">Ghi chú</label>
           <textarea className="input mb-3 min-h-24 resize-none py-3" value={form.notes} onChange={(e) => updateField('notes', e.target.value)} placeholder="Mô tả giống cây, điều kiện thu hoạch, đóng gói..." />
-          <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-sky-100 bg-sky-50 px-3 text-sm font-bold text-primary">
+          <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-green-100 bg-green-50 px-3 text-sm font-bold text-primary">
             QR truy xuất sẽ được tự động tạo khi lưu lô hàng
             <QrCode size={19} />
           </div>
@@ -561,7 +561,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
             {batch.hasQR ? (
               <button
                 type="button"
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-sky-50 px-3 text-xs font-extrabold text-primary"
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-green-50 px-3 text-xs font-extrabold text-primary"
                 onClick={() => setShowQrModal(true)}
               >
                 <QrCode size={15} />
@@ -578,7 +578,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
           <>
             <section className="rounded-2xl bg-white p-5 shadow-card">
               <div className="mb-4 flex items-start gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-primary">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-green-50 text-primary">
                   <Store size={21} />
                 </div>
                 <div>
@@ -616,7 +616,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
 
             <section className="rounded-2xl bg-white p-5 shadow-card">
               <div className="mb-4 flex items-start gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-primary">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-green-50 text-primary">
                   <Truck size={21} />
                 </div>
                 <div>
@@ -690,7 +690,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Badge tone={certificateTones[cert.status]}>{certificateLabels[cert.status]}</Badge>
-                    <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-sky-100 bg-sky-50 text-primary" onClick={() => editCertificate(cert)} aria-label={`Cập nhật ${cert.name}`}>
+                    <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-green-100 bg-green-50 text-primary" onClick={() => editCertificate(cert)} aria-label={`Cập nhật ${cert.name}`}>
                       <Pencil size={16} />
                     </button>
                     <button type="button" className="grid h-9 w-9 place-items-center rounded-full border border-red-100 bg-red-50 text-red-600" onClick={() => removeCertificate(cert.id)} aria-label={`Xóa ${cert.name}`}>
@@ -731,10 +731,10 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
             </div>
 
             {certificateAction === 'upload' && (
-              <label className="mb-4 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-sky-200 bg-sky-50/70 px-4 py-5 text-center text-primary">
+              <label className="mb-4 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-green-200 bg-green-50/70 px-4 py-5 text-center text-primary">
                 <Upload size={28} />
                 <span className="mt-2 text-sm font-extrabold">Chọn tệp chứng chỉ</span>
-                <span className="mt-1 text-xs font-semibold text-sky-500">PDF, ảnh chụp hoặc hồ sơ chứng nhận</span>
+                <span className="mt-1 text-xs font-semibold text-green-500">PDF, ảnh chụp hoặc hồ sơ chứng nhận</span>
                 <input className="sr-only" type="file" accept=".pdf,image/*" onChange={handleCertificateFileUpload} />
               </label>
             )}
@@ -776,7 +776,7 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
               </div>
               <button type="button" className="icon-btn h-9 w-9" onClick={() => setShowQrModal(false)} aria-label="Đóng QR"><X size={18} /></button>
             </div>
-            <div className="mx-auto grid h-52 w-52 place-items-center rounded-2xl border-2 border-sky-100 bg-white shadow-card">
+            <div className="mx-auto grid h-52 w-52 place-items-center rounded-2xl border-2 border-green-100 bg-white shadow-card">
               <BatchQrImage batch={batch} />
             </div>
             <p className="mt-4 text-lg font-extrabold text-ink">{batch.batchCode}</p>

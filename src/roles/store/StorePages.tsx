@@ -183,7 +183,7 @@ export function StoreReceiveDetail() {
             </div>
             <Badge tone="amber">{statusText}</Badge>
           </div>
-          <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-slate-700">{selectedDelivery.supplier}</p>
+          <p className="rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-slate-700">{selectedDelivery.supplier}</p>
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-card">

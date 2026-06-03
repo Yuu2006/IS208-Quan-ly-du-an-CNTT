@@ -15,7 +15,7 @@ export type User = {
 
 type AuthContextValue = {
   user: User | null;
-  login: (email: string, password: string, role?: UserRole) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   registerCustomer: (payload: CustomerRegistrationPayload) => Promise<boolean>;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => void;
@@ -55,13 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
-    login: async (email, password, role) => {
-      if (!email.trim() || !password.trim()) return false;
+    login: async (username, password) => {
+      if (!username.trim() || !password.trim()) return false;
       try {
         const { data } = await api.post<{ user: User }>('/auth/login', {
-          email: email.trim(),
-          password,
-          ...(role ? { role } : {})
+          username: username.trim(),
+          password
         });
         storeUser(data.user);
         setUser(data.user);

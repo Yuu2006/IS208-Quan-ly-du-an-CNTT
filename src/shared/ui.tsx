@@ -188,7 +188,7 @@ export function LoginPrompt() {
 }
 
 export function SimpleTask({ title, icon, tone }: { title: string; icon: ReactNode; tone: 'green' | 'amber' | 'blue' | 'red' }) {
-  const toneClass = { green: 'text-leaf bg-green-50', amber: 'text-amber-600 bg-amber-50', blue: 'text-primary bg-sky-50', red: 'text-red-600 bg-red-50' }[tone];
+  const toneClass = { green: 'text-leaf bg-green-50', amber: 'text-amber-600 bg-amber-50', blue: 'text-primary bg-green-50', red: 'text-red-600 bg-red-50' }[tone];
   return (
     <div className="min-h-full bg-paper">
       <AppHeader title={title} back />
