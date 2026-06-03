@@ -46,6 +46,7 @@ enum BatchStatus {
   AT_WAREHOUSE
   IN_TRANSIT
   DELIVERED
+  INCIDENT_REPORTED
   CANCELLED
 
   @@map("batch_status")
@@ -73,6 +74,7 @@ enum TransportStatus {
   IN_TRANSIT
   ARRIVED_WAREHOUSE
   DELIVERED
+  INCIDENT_REPORTED
 
   @@map("transport_status")
 }
@@ -103,6 +105,7 @@ enum QrCodeStatus {
 
 model Account {
   accountId     Int             @id @default(autoincrement()) @map("account_id")
+  partnerId     Int?            @map("partner_id")
   username      String          @unique @db.VarChar(50)
   passwordHash  String          @map("password_hash") @db.VarChar(255)
   fullName      String          @map("full_name") @db.VarChar(100)
@@ -112,11 +115,16 @@ model Account {
   status        AccountStatus   @default(ACTIVE)
   createdAt     DateTime?       @default(now()) @map("created_at") @db.Timestamp(3)
   updatedAt     DateTime?       @updatedAt @map("updated_at") @db.Timestamp(3)
-  partner       PartnerProfile?
+  partner       PartnerProfile? @relation("AccountPartner", fields: [partnerId], references: [partnerId])
+  profile       PartnerProfile? @relation("PartnerAccount")
   createdBatch  Batch[]         @relation("BatchCreatedBy")
+  createdTransports Transport[] @relation("TransportCreatedBy")
   deliveries    Transport[]     @relation("DeliveryConfirmedBy")
   reportedItems Incident[]      @relation("IncidentReportedBy")
+  auditLogs     AuditLog[]      @relation("AuditActor")
+  statusChanges BatchStatusHistory[] @relation("BatchStatusChangedBy")
 
+  @@index([partnerId])
   @@map("account")
 }
 
@@ -131,11 +139,16 @@ model PartnerProfile {
   cooperationStatus  CooperationStatus? @default(APPROVED) @map("cooperation_status")
   createdAt          DateTime?          @default(now()) @map("created_at") @db.Timestamp(3)
   updatedAt          DateTime?          @updatedAt @map("updated_at") @db.Timestamp(3)
-  account            Account?           @relation(fields: [accountId], references: [accountId])
+  account            Account?           @relation("PartnerAccount", fields: [accountId], references: [accountId])
+  accounts           Account[]          @relation("AccountPartner")
   farmBatches        Batch[]            @relation("BatchFarmPartner")
+  locatedBatches     Batch[]            @relation("BatchCurrentLocation")
   certificates       Certificate[]      @relation("CertificateIssuer")
   shippedTransports  Transport[]        @relation("TransportShipper")
   receivedTransports Transport[]        @relation("TransportReceiver")
+  farmTransports     Transport[]        @relation("TransportFarm")
+  storeTransports    Transport[]        @relation("TransportStore")
+  transporterTransports Transport[]     @relation("TransportTransporter")
 
   @@map("partner_profile")
 }
@@ -148,23 +161,28 @@ model Batch {
   productName    String          @map("product_name") @db.VarChar(200)
   productType    String?         @map("product_type") @db.VarChar(100)
   quantity       Decimal         @db.Decimal(12, 2)
+  currentQuantity Decimal?       @map("current_quantity") @db.Decimal(12, 2)
   unit           String?         @default("kg") @db.VarChar(20)
   harvestDate    DateTime?       @map("harvest_date") @db.Date
   packagedDate   DateTime?       @map("packaged_date") @db.Date
   expiryDate     DateTime?       @map("expiry_date") @db.Date
+  currentLocationPartnerId Int?   @map("current_location_partner_id")
   status         BatchStatus?    @default(CREATED)
   createdBy      Int?            @map("created_by")
   createdAt      DateTime?       @default(now()) @map("created_at") @db.Timestamp(3)
   updatedAt      DateTime?       @updatedAt @map("updated_at") @db.Timestamp(3)
   farmPartner    PartnerProfile? @relation("BatchFarmPartner", fields: [farmPartnerId], references: [partnerId])
+  currentLocation PartnerProfile? @relation("BatchCurrentLocation", fields: [currentLocationPartnerId], references: [partnerId])
   creator        Account?        @relation("BatchCreatedBy", fields: [createdBy], references: [accountId])
   certificates   BatchCert[]
   transport      Transport?
   incidents      Incident[]
   qrCode         QrCode?
   scanLogs       QrScanLog[]
+  statusHistory  BatchStatusHistory[]
 
   @@index([farmPartnerId])
+  @@index([currentLocationPartnerId])
   @@index([createdBy])
   @@map("batch")
 }
@@ -202,11 +220,16 @@ model Transport {
   batchId             Int?                  @unique @map("batch_id")
   shipperPartnerId    Int?                  @map("shipper_partner_id")
   receiverPartnerId   Int?                  @map("receiver_partner_id")
+  farmPartnerId       Int?                  @map("farm_partner_id")
+  storePartnerId      Int?                  @map("store_partner_id")
+  transporterPartnerId Int?                 @map("transporter_partner_id")
   driverName          String?               @map("driver_name") @db.VarChar(100)
   licensePlate        String?               @map("license_plate") @db.VarChar(20)
   transportStatus     TransportStatus?      @default(PENDING_PICKUP) @map("transport_status")
   actualDeparture     DateTime?             @map("actual_departure") @db.Timestamp(3)
+  expectedArrival     DateTime?             @map("expected_arrival_time") @db.Timestamp(3)
   actualArrival       DateTime?             @map("actual_arrival") @db.Timestamp(3)
+  createdBy           Int?                  @map("created_by")
   deliveryConfirmedBy Int?                  @map("delivery_confirmed_by")
   createdAt           DateTime?             @default(now()) @map("created_at") @db.Timestamp(3)
   updatedAt           DateTime?             @updatedAt @map("updated_at") @db.Timestamp(3)
@@ -214,12 +237,20 @@ model Transport {
   batch               Batch?                @relation(fields: [batchId], references: [batchId])
   shipperPartner      PartnerProfile?       @relation("TransportShipper", fields: [shipperPartnerId], references: [partnerId])
   receiverPartner     PartnerProfile?       @relation("TransportReceiver", fields: [receiverPartnerId], references: [partnerId])
+  farmPartner         PartnerProfile?       @relation("TransportFarm", fields: [farmPartnerId], references: [partnerId])
+  storePartner        PartnerProfile?       @relation("TransportStore", fields: [storePartnerId], references: [partnerId])
+  transporterPartner  PartnerProfile?       @relation("TransportTransporter", fields: [transporterPartnerId], references: [partnerId])
+  creator             Account?              @relation("TransportCreatedBy", fields: [createdBy], references: [accountId])
   deliveryConfirmer   Account?              @relation("DeliveryConfirmedBy", fields: [deliveryConfirmedBy], references: [accountId])
   checkpoints         TransportCheckpoint[]
   incidents           Incident[]
 
   @@index([shipperPartnerId])
   @@index([receiverPartnerId])
+  @@index([farmPartnerId])
+  @@index([storePartnerId])
+  @@index([transporterPartnerId])
+  @@index([createdBy])
   @@index([deliveryConfirmedBy])
   @@map("transport")
 }
@@ -264,6 +295,8 @@ model Incident {
 model QrCode {
   qrId        Int           @id @default(autoincrement()) @map("qr_id")
   batchId     Int?          @unique @map("batch_id")
+  traceToken  String        @unique @map("trace_token") @db.VarChar(80)
+  qrUrl       String?       @map("qr_url") @db.VarChar(500)
   qrImagePath String        @map("qr_image_path") @db.VarChar(500)
   status      QrCodeStatus? @default(ACTIVE)
   createdAt   DateTime?     @default(now()) @map("created_at") @db.Timestamp(3)
@@ -271,6 +304,42 @@ model QrCode {
   scanLogs    QrScanLog[]
 
   @@map("qr_code")
+}
+
+model AuditLog {
+  auditId    BigInt   @id @default(autoincrement()) @map("audit_id")
+  actorId    Int?     @map("actor_id")
+  action     String   @db.VarChar(100)
+  objectType String   @map("object_type") @db.VarChar(100)
+  objectId   String   @map("object_id") @db.VarChar(100)
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(500)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+  actor      Account? @relation("AuditActor", fields: [actorId], references: [accountId])
+
+  @@index([actorId])
+  @@index([objectType, objectId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+model BatchStatusHistory {
+  historyId    BigInt      @id @default(autoincrement()) @map("history_id")
+  batchId      Int         @map("batch_id")
+  status       BatchStatus
+  locationName String?     @map("location_name") @db.VarChar(200)
+  note         String?     @db.VarChar(500)
+  changedBy    Int?        @map("changed_by")
+  changedAt    DateTime    @default(now()) @map("changed_at") @db.Timestamp(3)
+  batch        Batch       @relation(fields: [batchId], references: [batchId])
+  changer      Account?    @relation("BatchStatusChangedBy", fields: [changedBy], references: [accountId])
+
+  @@index([batchId])
+  @@index([changedBy])
+  @@index([changedAt])
+  @@map("batch_status_history")
 }
 
 model QrScanLog {
