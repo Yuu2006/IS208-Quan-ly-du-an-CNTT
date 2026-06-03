@@ -21,6 +21,17 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
     return shipmentCode ? shipmentCode.replace('TRK', 'BATCH') : 'Chưa cập nhật';
   };
 
+  const isCreatedBatchStatus = (status?: string) => {
+    const normalizedStatus = String(status ?? '').trim();
+    return ['CREATED', 'Sẵn sàng', 'Chờ xử lý', 'Đang chuẩn bị', 'Chưa vận chuyển'].includes(normalizedStatus);
+  };
+
+  const canModifyShipment = (shipment?: any) => {
+    if (!shipment) return false;
+    const isCancelled = shipment.tone === 'locked' || shipment.status === 'Đã khóa' || shipment.status === 'Hủy bỏ' || shipment.status === 'Đã hủy';
+    return !isCancelled && isCreatedBatchStatus(shipment.status);
+  };
+
   // Mock data bổ sung cho Nguồn gốc và Hành trình (Gắn vào selectedShipment)
   const mockTraceability: any = {
     'active': {
@@ -179,6 +190,8 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
     }
   }, [targetShipmentId]);
 
+  const canModifySelectedShipment = canModifyShipment(selectedShipment);
+
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
       <header className="flex items-center justify-between">
@@ -287,7 +300,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                     }`}>
                     {selectedShipment.status}
                   </span>
-                  {selectedShipment.status !== 'Đã hủy' && selectedShipment.status !== 'Đã giao' && (
+                  {canModifySelectedShipment && (
                     <button onClick={() => setShowCancelModal(true)} className="px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200 shadow-sm flex items-center gap-1.5">
                       <AlertCircle size={14} />
                       Hủy lô hàng
@@ -840,6 +853,11 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
               <button
                 disabled={!cancelReason.trim()}
                 onClick={() => {
+                  if (!canModifySelectedShipment) {
+                    setShowCancelModal(false);
+                    setCancelReason('');
+                    return;
+                  }
                   setShipmentRows(shipmentRows.map((s: any) => s.id === selectedShipment.id ? { ...s, status: 'Đã hủy', tone: 'locked' } : s));
                   setSelectedShipment({ ...selectedShipment, status: 'Đã hủy', tone: 'locked' });
                   setShowCancelModal(false);
