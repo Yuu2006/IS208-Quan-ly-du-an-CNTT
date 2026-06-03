@@ -25,7 +25,7 @@ export function ShipmentDetailScreen({ id, onClose }: ShipmentDetailProps) {
     journey: [
       { date: '04/05/2026 09:15', title: 'Đang vận chuyển (Giai đoạn 1)', location: 'Trạm dừng nghỉ Dầu Giây', status: 'completed' },
       { date: '03/05/2026 15:00', title: 'Đơn vị vận chuyển tiếp nhận', location: 'Kho trung chuyển Đà Lạt', status: 'completed' },
-      { date: '03/05/2026 10:30', title: 'Xác nhận chứng chỉ (UC17)', location: 'Hệ thống kiểm định', status: 'completed' },
+      { date: '03/05/2026 10:30', title: 'Hệ thống kiểm định chứng chỉ', location: 'Hệ thống kiểm định', status: 'completed' },
       { date: '02/05/2026 08:00', title: 'Khởi tạo lô hàng', location: 'Nông trại GreenFarm', status: 'completed' }
     ],
     auditLogs: [
@@ -79,7 +79,7 @@ export function ShipmentDetailScreen({ id, onClose }: ShipmentDetailProps) {
         {/* Unified Content Area */}
         <div className="flex-1 overflow-hidden flex">
           {/* Left Column (2/3) - Basic Info & Certs */}
-          <div className="flex-[2] overflow-y-auto p-8 space-y-10">
+          <div className="flex-[2] overflow-y-auto p-8 space-y-6">
             {/* Basic Info Section */}
             <div>
               <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-6 flex items-center gap-2">
@@ -142,13 +142,13 @@ export function ShipmentDetailScreen({ id, onClose }: ShipmentDetailProps) {
           </div>
 
           {/* Right Column (1/3) - Journey & Logs */}
-          <div className="flex-1 bg-slate-50/40 border-l border-slate-100 overflow-y-auto p-8 space-y-10">
+          <div className="flex-1 bg-slate-50/40 border-l border-slate-100 overflow-y-auto p-8 space-y-6">
             {/* Mini Timeline Section */}
             <div>
-               <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-8 flex items-center gap-2">
+               <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-6 flex items-center gap-2">
                  <MapPin size={14} className="text-amber-500" /> Hành trình vận chuyển
                </h3>
-               <div className="relative pl-6 space-y-8">
+               <div className="relative pl-6 space-y-6">
                   <div className="absolute left-[7px] top-2 bottom-2 w-[1px] bg-slate-200"></div>
                   {shipment.journey.map((step, idx) => (
                     <div key={idx} className="relative">

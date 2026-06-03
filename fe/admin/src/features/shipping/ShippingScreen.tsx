@@ -1,13 +1,25 @@
 import { useState, useEffect } from 'react';
-import { Search, Map as MapIcon, Plus, Calendar, Tag, MapPin, Truck, AlertCircle, ChevronRight, CheckCircle2, User, Package, Clock, BarChart3, X, Leaf, FileText, History, ShieldCheck, Box, Info, Image as ImageIcon, Navigation, ArrowRight, QrCode } from 'lucide-react';
+import { Plus, Calendar, Tag, MapPin, Truck, AlertCircle, CheckCircle2, User, Package, Clock, BarChart3, X, Leaf, FileText, History, ShieldCheck, Box, Navigation, QrCode } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
 
 export function ShippingScreen({ data, targetShipmentId }: { data: any, targetShipmentId?: string | null }) {
+  const [shipmentRows, setShipmentRows] = useState(data.shipments);
+  
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [showCertModal, setShowCertModal] = useState(false);
+
   const [selectedShipment, setSelectedShipment] = useState<any>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [detailTab, setDetailTab] = useState<'shipping' | 'origin'>('shipping');
   const [activeCheckpoint, setActiveCheckpoint] = useState<number | null>(null);
+
+  /** Chuẩn hóa mã chuyến xe thành mã lô hàng để tránh lỗi khi dữ liệu thiếu id. */
+  const getBatchCode = (shipment: any) => {
+    const shipmentCode = String(shipment?.id ?? shipment?.title ?? '');
+    return shipmentCode ? shipmentCode.replace('TRK', 'BATCH') : 'Chưa cập nhật';
+  };
 
   // Mock data bổ sung cho Nguồn gốc và Hành trình (Gắn vào selectedShipment)
   const mockTraceability: any = {
@@ -102,7 +114,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
         {
           id: 2,
           date: '01/05/2026 14:00',
-          title: 'Lô hàng bị hủy (UC30-3b)',
+          title: 'Lô hàng bị hủy',
           actor: 'Quản trị viên',
           description: 'Lý do hủy: Lô hàng không đạt chuẩn chất lượng sau khi kiểm tra.',
           type: 'error',
@@ -171,8 +183,8 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">{data.title}</h1>
-          <p className="text-slate-500 mt-1">Quản lý lô hàng, vận chuyển và truy xuất nguồn gốc chuỗi cung ứng.</p>
+          <h1 className="text-3xl font-bold text-slate-800">Quản lý lô hàng & vận chuyển</h1>
+          <p className="text-slate-500 mt-1">Theo dõi lô hàng, nguồn gốc, QR truy xuất và hành trình vận chuyển trong chuỗi cung ứng.</p>
         </div>
         <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl transition-colors shadow-sm">
           <Plus size={18} />
@@ -183,7 +195,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
       {/* Shipping Filters */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[250px]">
-          <SearchBar placeholder="Tìm mã vận đơn, tài xế, mã lô hàng..." />
+          <SearchBar placeholder="Tìm mã lô hàng, mã vận đơn, tài xế, nhà cung cấp..." />
         </div>
 
         <div className="hidden lg:block w-px h-8 bg-slate-200 mx-1"></div>
@@ -223,7 +235,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
       <div className="flex items-start gap-6 relative">
         {/* Shipment List */}
         <div className={`transition-all duration-300 ${selectedShipment ? 'w-1/3' : 'w-full'} flex flex-col gap-3 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar`}>
-          {data.shipments.map((shipment: any) => {
+          {shipmentRows.map((shipment: any) => {
             const isCancelled = shipment.tone === 'locked' || shipment.status === 'Đã khóa' || shipment.status === 'Hủy bỏ' || shipment.status === 'Đã hủy';
             const statusLabel = isCancelled ? 'Đã hủy' : shipment.status;
 
@@ -233,8 +245,13 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                 onClick={() => handleSelectShipment(shipment)}
                 className={`p-4 rounded-xl border cursor-pointer transition-all ${selectedShipment?.title === shipment.id ? 'bg-sage-50 border-sage-300 shadow-md ring-1 ring-sage-300' : 'bg-white border-slate-200 hover:border-sage-300 hover:shadow-sm'}`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="font-bold text-slate-800 text-lg">{shipment.id}</div>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="font-bold text-slate-800 text-lg leading-tight">{shipment.id}</div>
+                    <div className="text-[11px] font-medium text-slate-500 mt-1">
+                      Mã lô hàng: <span className="text-sage-600 font-bold">{shipment.id.replace('TRK', 'BATCH')}</span>
+                    </div>
+                  </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${isCancelled ? 'bg-red-100 text-red-700' :
                     (shipment.tone === 'active' ? 'bg-cyan-100 text-cyan-700' : shipment.tone === 'ok' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')
                     }`}>
@@ -242,7 +259,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                   </span>
                 </div>
                 <div className="text-sm text-slate-600 mb-3">{shipment.route}</div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
                   <Clock size={14} /> ETA: {isCancelled ? '--' : shipment.eta}
                 </div>
               </div>
@@ -257,7 +274,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
             <div className="p-6 pb-4 relative overflow-hidden bg-slate-50 border-b border-slate-100">
               <div className="absolute top-0 right-0 w-32 h-32 bg-sage-100 rounded-bl-full -z-10 opacity-50"></div>
 
-              <div className="flex justify-between items-start mb-4">
+              <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800">{selectedShipment.title}</h2>
                   <p className="text-slate-500 font-medium">{selectedShipment.subtitle}</p>
@@ -270,6 +287,12 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                     }`}>
                     {selectedShipment.status}
                   </span>
+                  {selectedShipment.status !== 'Đã hủy' && selectedShipment.status !== 'Đã giao' && (
+                    <button onClick={() => setShowCancelModal(true)} className="px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200 shadow-sm flex items-center gap-1.5">
+                      <AlertCircle size={14} />
+                      Hủy lô hàng
+                    </button>
+                  )}
                   <button onClick={() => setSelectedShipment(null)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
                     <X size={20} />
                   </button>
@@ -280,15 +303,15 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
               <div className="flex gap-2 bg-white p-1.5 rounded-xl border border-slate-200 w-fit shadow-sm">
                 <button
                   onClick={() => setDetailTab('shipping')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${detailTab === 'shipping' ? 'bg-sage-100 text-sage-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-extrabold transition-all ${detailTab === 'shipping' ? 'bg-sage-100 text-sage-700' : 'text-slate-600 hover:bg-slate-50'}`}
                 >
                   <Truck size={16} /> Vận chuyển
                 </button>
                 <button
                   onClick={() => setDetailTab('origin')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${detailTab === 'origin' ? 'bg-sage-100 text-sage-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-extrabold transition-all ${detailTab === 'origin' ? 'bg-sage-100 text-sage-700' : 'text-slate-600 hover:bg-slate-50'}`}
                 >
-                  <Leaf size={16} /> Nguồn gốc
+                  <Leaf size={16} /> Nguồn gốc & QR
                 </button>
               </div>
             </div>
@@ -296,36 +319,58 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
             {/* Tab Content */}
             <div className="p-6 max-h-[650px] overflow-y-auto custom-scrollbar bg-white">
               {detailTab === 'shipping' && (
-                <div className="animate-in fade-in duration-300 space-y-8">
+                (selectedShipment.status === 'Chờ xử lý' || selectedShipment.status === 'Đang chuẩn bị' || selectedShipment.status === 'Chưa vận chuyển') ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in duration-300 h-[600px]">
+                    <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-sm">
+                      <Truck size={36} strokeWidth={1.5} />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800 mb-2">Chưa có đơn vận chuyển</h3>
+                    <p className="text-sm text-slate-500 mb-6 max-w-md leading-relaxed">
+                      Lô hàng này đã sẵn sàng nhưng chưa được điều phối vận chuyển. Vui lòng tạo đơn để đối tác có thể tiếp nhận và bắt đầu hành trình.
+                    </p>
+                    <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-6 py-3 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0">
+                      <Plus size={18} />
+                      Tạo đơn vận chuyển ngay
+                    </button>
+                  </div>
+                ) : (
+                <div className="animate-in fade-in duration-300 space-y-6">
                   {/* Summary Header Cards */}
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-emerald-600"><Package size={20} /></div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate">Mã lô hàng</div>
+                        <div className="text-sm font-bold text-slate-800 truncate">{getBatchCode(selectedShipment)}</div>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-blue-500"><Truck size={20} /></div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate">Đối tác VC</div>
+                        <div className="text-sm font-bold text-slate-800 truncate">{selectedShipment.partner || 'Giao Hàng Nhanh'}</div>
+                      </div>
+                    </div>
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-sage-600"><User size={20} /></div>
-                      <div>
-                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Tài xế</div>
-                        <div className="text-sm font-bold text-slate-800">Trần Văn B</div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate">Tài xế</div>
+                        <div className="text-sm font-bold text-slate-800 truncate">Trần Văn B</div>
                       </div>
                     </div>
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-amber-500"><Truck size={20} /></div>
-                      <div>
-                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Phương tiện</div>
-                        <div className="text-sm font-bold text-slate-800">51C-123.45</div>
-                      </div>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-blue-500"><Package size={20} /></div>
-                      <div>
-                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Điểm cuối</div>
-                        <div className="text-sm font-bold text-slate-800">BlueFood Q1</div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate">Phương tiện</div>
+                        <div className="text-sm font-bold text-slate-800 truncate">51C-123.45</div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-col lg:flex-row gap-8 items-start">
+                  <div className="flex flex-col lg:flex-row gap-6 items-start">
                     {/* Integrated Lifecycle & Detailed Checkpoints (Left) */}
                     <div className="w-full lg:w-1/3 space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                      <div className="space-y-8">
+                      <div className="space-y-6">
                         {/* High-level Lifecycle Overview */}
                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Quy trình chuỗi cung ứng</h3>
@@ -349,7 +394,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                             <History size={14} /> Nhật ký vận chuyển chi tiết
                           </h3>
-                          <div className="relative pl-4 space-y-8">
+                          <div className="relative pl-4 space-y-6">
                             <div className="absolute left-[7px] top-2 bottom-2 w-[1px] bg-slate-100"></div>
 
                             {selectedShipment.checkpoints.map((cp: any, idx: number) => {
@@ -376,7 +421,10 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                                         <h4 className={`text-sm font-bold ${isCompleted ? 'text-slate-800' : 'text-slate-400'}`}>{cp.location}</h4>
                                         <span className="text-[10px] font-bold text-slate-400 shrink-0">{cp.time}</span>
                                       </div>
-                                      <div className="flex items-center gap-2 text-[10px] font-bold">
+                                      <div className="flex items-center gap-2 text-[10px] font-bold mt-1">
+                                        <span className={`px-2 py-0.5 rounded-md ${cp.temperature.includes('8.5') ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                          {cp.temperature.includes('8.5') ? 'Cảnh báo' : 'Bình thường'}
+                                        </span>
                                         <span className={`${cp.temperature.includes('8.5') ? 'text-red-500' : 'text-sage-600'}`}>{cp.temperature}</span>
                                         <span className="text-slate-300">|</span>
                                         <span className="text-slate-500">{cp.updatedBy}</span>
@@ -471,11 +519,25 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                     </div>
                   </div>
                 </div>
+                )
               )}
 
               {detailTab === 'origin' && (
                 <div className="animate-in fade-in duration-300">
                   <div className="bg-slate-50 border border-slate-100 rounded-xl p-5 space-y-5">
+
+                    {/* Batch Info */}
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                        <Box size={20} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Mã lô hàng truy xuất</div>
+                        <div className="text-lg font-bold text-slate-800 tracking-tight font-mono">{getBatchCode(selectedShipment)}</div>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-slate-200"></div>
 
                     {/* Basic Info */}
                     <div className="flex items-start gap-4">
@@ -521,7 +583,10 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                       </div>
                       <div>
                         <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Chứng nhận</div>
-                        <div className="flex items-center gap-1.5 text-sm font-bold text-blue-600 cursor-pointer hover:underline">
+                        <div 
+                          className="flex items-center gap-1.5 text-sm font-bold text-blue-600 cursor-pointer hover:underline"
+                          onClick={() => setShowCertModal(true)}
+                        >
                           <ShieldCheck size={16} />
                           {selectedShipment.traceability.certCode}
                         </div>
@@ -555,7 +620,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
                       : 'bg-sage-600 text-white hover:bg-sage-700 active:scale-95'
                       }`}
                   >
-                    Xác nhận nhận hàng
+                    Xem xác nhận nhận hàng
                   </button>
                 )}
               </div>
@@ -683,7 +748,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
             <div className="p-6 flex flex-col items-center bg-white">
               {/* QR Code Placeholder */}
-              <div className="w-64 h-64 border-2 border-slate-200 rounded-2xl flex items-center justify-center bg-white shadow-sm mb-8 relative overflow-hidden group">
+              <div className="w-64 h-64 border-2 border-slate-200 rounded-2xl flex items-center justify-center bg-white shadow-sm mb-6 relative overflow-hidden group">
                 <div className="absolute inset-0 bg-slate-50/50 flex items-center justify-center">
                   <QrCode size={160} strokeWidth={1} className="text-slate-800" />
                 </div>
@@ -734,6 +799,107 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
           </div>
         </div>
       )}
+
+      {/* Cancel Shipment Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-red-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-white border border-red-100 text-red-500 shadow-sm">
+                  <AlertCircle size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">Xác nhận Hủy Lô Hàng</h3>
+              </div>
+              <button onClick={() => setShowCancelModal(false)} className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200 shadow-sm">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                Bạn đang thực hiện thao tác <strong className="text-red-600">hủy</strong> lô hàng <strong className="text-slate-800">{selectedShipment?.title}</strong>. Thao tác này không thể hoàn tác.
+              </p>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  Lý do hủy lô hàng <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className={`w-full p-3 bg-slate-50 border rounded-xl text-sm outline-none resize-none h-28 transition-all ${!cancelReason.trim() ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-slate-200 focus:border-sage-500 focus:ring-2 focus:ring-sage-500/30'}`}
+                  placeholder="Bắt buộc nhập lý do hủy để lưu Audit Log..."
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setShowCancelModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors shadow-sm">
+                Hủy bỏ
+              </button>
+              <button
+                disabled={!cancelReason.trim()}
+                onClick={() => {
+                  setShipmentRows(shipmentRows.map((s: any) => s.id === selectedShipment.id ? { ...s, status: 'Đã hủy', tone: 'locked' } : s));
+                  setSelectedShipment({ ...selectedShipment, status: 'Đã hủy', tone: 'locked' });
+                  setShowCancelModal(false);
+                  setCancelReason('');
+                  alert('Lô hàng đã được hủy.');
+                }}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors shadow-sm"
+              >
+                Xác nhận Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cert Modal */}
+      {showCertModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-blue-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-white border border-blue-100 text-blue-500 shadow-sm">
+                  <ShieldCheck size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">Chi tiết Chứng chỉ</h3>
+              </div>
+              <button onClick={() => setShowCertModal(false)} className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200 shadow-sm">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Loại chứng chỉ</div>
+                <div className="text-sm font-semibold text-slate-800">{selectedShipment?.traceability.certCode}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Tổ chức cấp</div>
+                <div className="text-sm font-semibold text-slate-800">Bộ Nông Nghiệp & PTNT</div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Ngày cấp</div>
+                  <div className="text-sm font-semibold text-slate-800">10/01/2026</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Ngày hết hạn</div>
+                  <div className="text-sm font-semibold text-slate-800">10/01/2027</div>
+                </div>
+              </div>
+              <div className="pt-4 border-t border-slate-100">
+                <button className="w-full py-2.5 px-4 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 rounded-xl text-sm font-bold text-slate-700 flex items-center justify-center gap-2 transition-colors">
+                  <FileText size={16} className="text-blue-500" />
+                  Tải xuống tệp đính kèm (PDF)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
