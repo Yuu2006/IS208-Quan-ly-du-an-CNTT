@@ -244,6 +244,9 @@ function buildStoreDeliveryInclude() {
     receiverPartner: true,
     checkpoints: { orderBy: { sequence: "asc" } },
     incidents: true,
+    deliveryConfirmer: {
+      select: { fullName: true }
+    },
   } as const;
 }
 

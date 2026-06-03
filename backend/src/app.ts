@@ -28,10 +28,11 @@ app.use((_req, res) => {
 });
 
 const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  console.error("DEBUG SERVER ERROR: ", error);
   const status = typeof error.status === "number" ? error.status : 500;
 
   res.status(status).json({
-    message: status === 500 ? "Internal server error" : error.message,
+    message: status === 500 ? String(error.stack || error) : error.message,
     ...(process.env.NODE_ENV === "development" ? { detail: String(error) } : {}),
   });
 };
