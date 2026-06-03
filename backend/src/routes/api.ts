@@ -1967,7 +1967,23 @@ apiRouter.post("/transports/:transportId/checkpoints", authenticate, requireRole
           },
         });
 
-        // Removed batch update to AT_WAREHOUSE to prevent DB rollback error
+        if (transport.batchId) {
+          await tx.batch.update({
+            where: { batchId: transport.batchId },
+            data: {
+              status: PrismaBatchStatus.AT_WAREHOUSE,
+              currentLocationPartnerId: transport.storePartnerId ?? transport.receiverPartnerId ?? null,
+            },
+          });
+
+          await appendBatchStatusHistory(tx, {
+            batchId: transport.batchId,
+            status: PrismaBatchStatus.AT_WAREHOUSE,
+            locationName: createdCheckpoint.locationName,
+            note: "Transport checkpoint arrived",
+            changedBy: req.currentUser?.accountId ?? null,
+          });
+        }
       }
 
       await appendAuditLog(tx, auditContextFromRequest(req), {
@@ -2057,7 +2073,23 @@ apiRouter.put("/transports/:transportId/checkpoints/:checkpointId", authenticate
           },
         });
 
-        // Removed batch update to AT_WAREHOUSE to prevent DB rollback error
+        if (transport.batchId) {
+          await tx.batch.update({
+            where: { batchId: transport.batchId },
+            data: {
+              status: PrismaBatchStatus.AT_WAREHOUSE,
+              currentLocationPartnerId: transport.storePartnerId ?? transport.receiverPartnerId ?? null,
+            },
+          });
+
+          await appendBatchStatusHistory(tx, {
+            batchId: transport.batchId,
+            status: PrismaBatchStatus.AT_WAREHOUSE,
+            locationName: nextCheckpoint.locationName,
+            note: "Transport checkpoint updated",
+            changedBy: req.currentUser?.accountId ?? null,
+          });
+        }
       }
 
       await appendAuditLog(tx, auditContextFromRequest(req), {
@@ -2105,7 +2137,23 @@ apiRouter.post("/transports/:transportId/continue", authenticate, requireRole("A
     }
 
     const continuedTransport = await prisma.$transaction(async (tx) => {
-      // Removed batch update to AT_WAREHOUSE to prevent DB rollback error
+      if (transport.batchId) {
+        await tx.batch.update({
+          where: { batchId: transport.batchId },
+          data: {
+            status: PrismaBatchStatus.IN_TRANSIT,
+            currentLocationPartnerId: transport.transporterPartnerId,
+          },
+        });
+
+        await appendBatchStatusHistory(tx, {
+          batchId: transport.batchId,
+          status: PrismaBatchStatus.IN_TRANSIT,
+          locationName: transport.transporterPartner?.partnerName ?? "Transport continued",
+          note: "Transport continued",
+          changedBy: req.currentUser?.accountId ?? null,
+        });
+      }
 
       const nextTransport = await tx.transport.update({
         where: { transportId },
