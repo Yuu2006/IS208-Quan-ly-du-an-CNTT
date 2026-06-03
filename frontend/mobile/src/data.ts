@@ -1,4 +1,4 @@
-export type BatchStatus = 'draft' | 'ready' | 'in_transit' | 'delivered' | 'cancelled';
+export type BatchStatus = 'ready' | 'at_warehouse' | 'in_transit' | 'delivered' | 'incident_reported' | 'cancelled';
 
 export type CertificateStatus = 'valid' | 'expiring' | 'expired';
 

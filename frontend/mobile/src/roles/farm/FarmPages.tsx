@@ -44,7 +44,7 @@ import {
   UserCircle,
   X
 } from 'lucide-react';
-import { assignBatchTransport, createBatchRecord, createCertificateForBatch, deleteCertificateFromBatch, DeliveryStaff, DestinationStore, getDeliveryStaff, getDestinationStores, updateBatchRecord, updateCertificateForBatch } from '../../api';
+import { assignBatchTransport, cancelBatchRecord, createBatchRecord, createCertificateForBatch, deleteCertificateFromBatch, DeliveryStaff, DestinationStore, getDeliveryStaff, getDestinationStores, updateBatchRecord, updateCertificateForBatch } from '../../api';
 import { Batch, BatchStatus, Certificate, CertificateStatus } from '../../data';
 import { AppHeader, Badge, BottomNav, LoginPrompt, Metric, ProfileRow, certificateLabels, certificateTones, statusClasses, statusLabels } from '../../shared/ui';
 
@@ -253,11 +253,14 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
     quantity: String(editingBatch?.quantity ?? ''),
     harvestDate: editingBatch?.harvestDate ?? '',
     expiryDate: editingBatch?.expiryDate ?? '',
-    status: editingBatch?.status ?? 'draft' as BatchStatus,
+    status: editingBatch?.status ?? 'ready' as BatchStatus,
     location: editingBatch?.location ?? '',
     notes: editingBatch?.notes ?? '',
     hasQR: editingBatch?.hasQR ?? true
   });
+  const [deliveryStaff, setDeliveryStaff] = useState<DeliveryStaff[]>([]);
+  const [destinationStores, setDestinationStores] = useState<DestinationStore[]>([]);
+  const [assignmentForm, setAssignmentForm] = useState({ driverAccountId: '', receiverPartnerId: '' });
   const [formMessage, setFormMessage] = useState('');
 
   useEffect(() => {
@@ -268,8 +271,33 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
     });
   }, [batches, editingBatch, suggestedBatchCode]);
 
+  useEffect(() => {
+    if (editingBatch) return;
+    let active = true;
+
+    Promise.all([getDeliveryStaff(), getDestinationStores()])
+      .then(([staffItems, storeItems]) => {
+        if (!active) return;
+        setDeliveryStaff(staffItems);
+        setDestinationStores(storeItems);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDeliveryStaff([]);
+        setDestinationStores([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [editingBatch]);
+
   function updateField(name: keyof typeof form, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function updateAssignmentField(name: keyof typeof assignmentForm, value: string) {
+    setAssignmentForm((current) => ({ ...current, [name]: value }));
   }
 
   async function submit(event: FormEvent) {
@@ -303,10 +331,22 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
       return;
     }
 
+    if (
+      (assignmentForm.driverAccountId && !assignmentForm.receiverPartnerId)
+      || (!assignmentForm.driverAccountId && assignmentForm.receiverPartnerId)
+    ) {
+      setFormMessage('Chọn đủ transporter và store điểm đến để phân công vận chuyển, hoặc bỏ trống cả hai.');
+      return;
+    }
+
     try {
       const createdBatch = await createBatchRecord(nextBatch);
-      await onSave(createdBatch);
-      navigate(`/farm/batches/${createdBatch.id}`);
+      const shouldAssignTransport = Boolean(assignmentForm.driverAccountId && assignmentForm.receiverPartnerId);
+      const savedBatch = shouldAssignTransport
+        ? await assignBatchTransport(createdBatch.batchCode, assignmentForm)
+        : createdBatch;
+      await onSave(savedBatch);
+      navigate(`/farm/batches/${savedBatch.id}`);
     } catch (error) {
       setFormMessage(apiErrorMessage(error, 'Không tạo được lô hàng. Vui lòng kiểm tra dữ liệu và thử lại.'));
     }
@@ -351,7 +391,12 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <label className="form-label">Trạng thái</label>
           <select className="input mb-3" value={form.status} onChange={(e) => updateField('status', e.target.value as BatchStatus)}>
-            {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <option value="ready">{statusLabels.ready}</option>
+            {editingBatch && <option value="at_warehouse">{statusLabels.at_warehouse}</option>}
+            {editingBatch && <option value="in_transit">{statusLabels.in_transit}</option>}
+            {editingBatch && <option value="delivered">{statusLabels.delivered}</option>}
+            {editingBatch && <option value="incident_reported">{statusLabels.incident_reported}</option>}
+            {editingBatch && <option value="cancelled">{statusLabels.cancelled}</option>}
           </select>
           <label className="form-label">Vị trí nông trại</label>
           <input className="input mb-3" value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Đà Lạt, Lâm Đồng" />
@@ -362,6 +407,40 @@ export function BatchForm({ batches = [], onSave }: { batches?: Batch[]; onSave:
             <QrCode size={19} />
           </div>
         </section>
+
+        {!editingBatch && (
+          <section className="rounded-2xl bg-white p-5 shadow-card">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-green-50 text-primary">
+                <Truck size={21} />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-ink">Phân công vận chuyển</h3>
+                <p className="mt-1 text-sm text-muted">Có thể chọn sau. Nếu chọn đủ transporter và store, lô sẽ chuyển sang đang vận chuyển sau khi lưu.</p>
+              </div>
+            </div>
+
+            <label className="form-label">Transporter</label>
+            <select className="input mb-3" value={assignmentForm.driverAccountId} onChange={(event) => updateAssignmentField('driverAccountId', event.target.value)}>
+              <option value="">Chưa phân công</option>
+              {deliveryStaff.map((staff) => (
+                <option key={staff.id} value={staff.id}>
+                  {staff.fullName}{staff.phone ? ` - ${staff.phone}` : ''}
+                </option>
+              ))}
+            </select>
+
+            <label className="form-label">Store điểm đến</label>
+            <select className="input" value={assignmentForm.receiverPartnerId} onChange={(event) => updateAssignmentField('receiverPartnerId', event.target.value)}>
+              <option value="">Chưa chọn điểm đến</option>
+              {destinationStores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}{store.address ? ` - ${store.address}` : ''}
+                </option>
+              ))}
+            </select>
+          </section>
+        )}
 
         {formMessage ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
@@ -517,9 +596,14 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
     setUploadMessage('');
   }
 
-  function removeBatch() {
-    onDelete(batch.id);
-    navigate('/farm/batches');
+  async function removeBatch() {
+    try {
+      const cancelledBatch = await cancelBatchRecord(batch.batchCode);
+      await onTransportAssigned?.(cancelledBatch);
+      navigate(`/farm/batches/${cancelledBatch.id}`);
+    } catch {
+      setAssignMessage('Chỉ có thể huỷ lô hàng chưa phân công vận chuyển.');
+    }
   }
 
   async function submitTransportAssignment(event: FormEvent) {
@@ -725,7 +809,9 @@ export function BatchDetail({ batches, onDelete, onCertificatesChange, onTranspo
           </button>
         </section>
 
-        <button type="button" className="outline-btn flex w-full items-center justify-center gap-2 border-red-200 text-red-600" onClick={removeBatch}><Trash2 size={18} /> Xóa lô hàng</button>
+        {batch.status === 'ready' && (
+          <button type="button" className="outline-btn flex w-full items-center justify-center gap-2 border-red-200 text-red-600" onClick={removeBatch}><Trash2 size={18} /> Huỷ lô hàng</button>
+        )}
       </div>
 
       {(certificateAction === 'upload' || (certificateAction === 'update' && editingCertId)) && (

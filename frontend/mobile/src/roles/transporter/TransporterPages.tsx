@@ -10,7 +10,7 @@ import {
   Truck,
   UserCircle
 } from 'lucide-react';
-import { createTransportCheckpoint, getTransporterTransports, TransporterTransport, updateTransportCheckpoint } from '../../api';
+import { continueTransport, createTransportCheckpoint, getTransporterTransports, TransporterTransport, updateTransportCheckpoint } from '../../api';
 import { useAuth } from '../../auth';
 import { BottomNav, AppHeader, Badge, Metric } from '../../shared/ui';
 
@@ -140,14 +140,30 @@ export function TransportCheckpointUpdate() {
   const checkpoints = selectedTransport?.checkpoints ?? [];
   const currentIndex = checkpoints.findIndex((item) => !item.updated);
   const currentCheckpoint = currentIndex >= 0 ? checkpoints[currentIndex] : null;
-  const previousCheckpoint = currentIndex > 0 ? checkpoints[currentIndex - 1] : checkpoints.filter((item) => item.updated).at(-1);
+  const latestUpdatedCheckpoint = checkpoints.filter((item) => item.updated).at(-1) ?? null;
+  const lockedCheckpoint = selectedTransport?.status === 'Đã đến kho' ? latestUpdatedCheckpoint : null;
+  const waitingStoreConfirmation = Boolean(
+    selectedTransport
+    && lockedCheckpoint
+    && (
+      lockedCheckpoint.statusAtCheckpoint === 'Đã đến nơi'
+      || lockedCheckpoint.locationName === selectedTransport.destinationName
+    )
+  );
+  const activeCheckpoint = lockedCheckpoint ?? currentCheckpoint;
+  const previousCheckpoint = lockedCheckpoint
+    ? checkpoints.filter((item) => item.updated && item.id !== lockedCheckpoint.id).at(-1)
+    : currentIndex > 0 ? checkpoints[currentIndex - 1] : latestUpdatedCheckpoint;
   const nextSequence = checkpoints.reduce((max, checkpoint) => Math.max(max, checkpoint.sequence), 0) + 1;
-  const editableSequence = currentCheckpoint?.sequence ?? nextSequence;
+  const editableSequence = activeCheckpoint?.sequence ?? nextSequence;
   const canEditCheckpoint = Boolean(selectedTransport && selectedTransport.status !== 'Đã giao' && selectedTransport.status !== 'Đã đến kho');
+  const canContinueTransport = Boolean(selectedTransport && selectedTransport.status === 'Đã đến kho' && !waitingStoreConfirmation);
+  const locationPlaceholder = activeCheckpoint?.locationName && !activeCheckpoint.updated
+    ? activeCheckpoint.locationName
+    : editableSequence === 1 ? 'Điểm nhận hàng' : 'Nhập vị trí hoặc tọa độ GPS';
   const [locationName, setLocationName] = useState('');
   const [temperature, setTemperature] = useState('');
   const [condition, setCondition] = useState(conditionOptions[0]);
-  const [arrivedWarehouse, setArrivedWarehouse] = useState(false);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -159,22 +175,20 @@ export function TransportCheckpointUpdate() {
   }, [selectedTransportId, transports]);
 
   useEffect(() => {
-    if (!currentCheckpoint) {
-      setLocationName(selectedTransport && canEditCheckpoint ? checkpointCode(nextSequence) : '');
+    if (!activeCheckpoint) {
+      setLocationName('');
       setTemperature('');
       setCondition(conditionOptions[0]);
-      setArrivedWarehouse(false);
       setNote('');
       return;
     }
 
-    setLocationName(currentCheckpoint.locationName);
-    setTemperature(currentCheckpoint.temperature === null ? '' : String(currentCheckpoint.temperature));
-    setCondition(currentCheckpoint.updated ? currentCheckpoint.statusAtCheckpoint : conditionOptions[0]);
-    setArrivedWarehouse(false);
-    setNote(currentCheckpoint.note);
+    setLocationName(activeCheckpoint.updated ? activeCheckpoint.locationName : '');
+    setTemperature(activeCheckpoint.temperature === null ? '' : String(activeCheckpoint.temperature));
+    setCondition(activeCheckpoint.updated ? activeCheckpoint.statusAtCheckpoint : conditionOptions[0]);
+    setNote(activeCheckpoint.note);
     setMessage('');
-  }, [canEditCheckpoint, currentCheckpoint?.id, nextSequence, selectedTransport?.id]);
+  }, [activeCheckpoint?.id, activeCheckpoint?.updated, lockedCheckpoint?.id, selectedTransport?.id]);
 
   async function handleSave() {
     if (!selectedTransport || !canEditCheckpoint || !condition.trim()) return;
@@ -184,16 +198,16 @@ export function TransportCheckpointUpdate() {
     setMessage('');
 
     try {
-      const baseLocationName = locationName.trim() || currentCheckpoint?.locationName || checkpointCode(nextSequence);
+      const baseLocationName = locationName.trim() || activeCheckpoint?.locationName || checkpointCode(nextSequence);
       const payload = {
         locationName: baseLocationName,
         temperature: Number.isFinite(parsedTemperature) ? parsedTemperature : null,
         statusAtCheckpoint: condition.trim(),
         note: note.trim(),
-        arrivedWarehouse
+        arrivedWarehouse: true
       };
-      const updatedCheckpoint = currentCheckpoint
-        ? await updateTransportCheckpoint(selectedTransport.id, currentCheckpoint.id, payload)
+      const updatedCheckpoint = activeCheckpoint
+        ? await updateTransportCheckpoint(selectedTransport.id, activeCheckpoint.id, payload)
         : await createTransportCheckpoint(selectedTransport.id, nextSequence, {
             ...payload,
             locationName: baseLocationName
@@ -204,7 +218,7 @@ export function TransportCheckpointUpdate() {
         const checkpointExists = transport.checkpoints.some((checkpoint) => checkpoint.id === updatedCheckpoint.id);
         return {
           ...transport,
-          status: arrivedWarehouse ? 'Đã đến kho' : transport.status,
+          status: 'Đã đến kho',
           checkpoints: checkpointExists
             ? transport.checkpoints.map((checkpoint) => (
                 checkpoint.id === updatedCheckpoint.id ? updatedCheckpoint : checkpoint
@@ -215,6 +229,56 @@ export function TransportCheckpointUpdate() {
       setMessage(`${checkpointCode(updatedCheckpoint.sequence)} đã được cập nhật.`);
     } catch {
       setMessage('Không lưu được checkpoint. Vui lòng thử lại.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeliverTransport() {
+    if (!selectedTransport || selectedTransport.status === 'Đã giao') return;
+
+    const parsedTemperature = temperature.trim() ? Number(temperature.replace(',', '.')) : null;
+    setSaving(true);
+    setMessage('');
+
+    try {
+      const updatedCheckpoint = await createTransportCheckpoint(selectedTransport.id, nextSequence, {
+        locationName: selectedTransport.destinationName,
+        temperature: Number.isFinite(parsedTemperature) ? parsedTemperature : null,
+        statusAtCheckpoint: 'Đã đến nơi',
+        note: note.trim() || condition.trim(),
+        arrivedWarehouse: true
+      });
+      setTransports((items) => items.map((transport) => {
+        if (transport.id !== selectedTransport.id) return transport;
+        return {
+          ...transport,
+          status: 'Đã đến kho',
+          checkpoints: [...transport.checkpoints, updatedCheckpoint].sort((left, right) => left.sequence - right.sequence)
+        };
+      }));
+      setMessage('Đơn đã đến cửa hàng và đang chờ cửa hàng xác nhận.');
+    } catch {
+      setMessage('Không thể cập nhật đã đến nơi. Vui lòng thử lại.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleContinueTransport() {
+    if (!selectedTransport || !canContinueTransport) return;
+
+    setSaving(true);
+    setMessage('');
+
+    try {
+      const continued = await continueTransport(selectedTransport.id);
+      setTransports((items) => items.map((transport) => (
+        transport.id === continued.id ? continued : transport
+      )));
+      setMessage('Chuyến vận chuyển đã tiếp tục.');
+    } catch {
+      setMessage('Không thể tiếp tục vận chuyển. Vui lòng thử lại.');
     } finally {
       setSaving(false);
     }
@@ -268,7 +332,7 @@ export function TransportCheckpointUpdate() {
               </thead>
               <tbody>
                 {checkpoints.map((checkpoint) => {
-                  const isCurrent = checkpoint.id === currentCheckpoint?.id;
+                  const isCurrent = checkpoint.id === activeCheckpoint?.id;
                   return (
                     <tr key={checkpoint.id} className={isCurrent ? 'bg-green-50' : ''}>
                       <td className="border-b border-line px-2 py-3 font-extrabold text-ink">{checkpointCode(checkpoint.sequence)}</td>
@@ -286,19 +350,38 @@ export function TransportCheckpointUpdate() {
           {!checkpoints.length && <p className="py-3 text-sm text-muted">Chưa có dòng checkpoint trong bảng.</p>}
         </section>
 
+        {canContinueTransport && (
+          <button className="primary-btn flex w-full items-center justify-center gap-2 disabled:opacity-60" type="button" onClick={handleContinueTransport} disabled={saving}>
+            <Truck size={18} />
+            {saving ? 'Đang xử lý...' : 'Tiếp tục di chuyển'}
+          </button>
+        )}
+
         <section className="rounded-2xl bg-white p-5 shadow-card">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase text-muted">Checkpoint hiện tại</p>
-              <h3 className="text-lg font-extrabold text-ink">{canEditCheckpoint ? checkpointCode(editableSequence) : 'Đã hoàn tất'}</h3>
+              <h3 className="text-lg font-extrabold text-ink">{activeCheckpoint || canEditCheckpoint ? checkpointCode(editableSequence) : 'Đã hoàn tất'}</h3>
             </div>
-            <Badge tone={canEditCheckpoint ? 'amber' : 'green'}>{canEditCheckpoint ? 'Chờ cập nhật' : 'Hoàn tất'}</Badge>
+            <Badge tone={waitingStoreConfirmation ? 'amber' : canContinueTransport ? 'green' : canEditCheckpoint ? 'amber' : 'green'}>{waitingStoreConfirmation ? 'Chờ cửa hàng xác nhận' : canContinueTransport ? 'Đã đến kho' : canEditCheckpoint ? 'Chờ cập nhật' : 'Hoàn tất'}</Badge>
           </div>
+
+          {canEditCheckpoint && (
+            <button
+              className="outline-btn mb-3 flex w-full items-center justify-center gap-2 border-emerald-200 text-leaf disabled:opacity-60"
+              type="button"
+              onClick={handleDeliverTransport}
+              disabled={saving}
+            >
+              <MapPin size={18} />
+              {saving ? 'Đang cập nhật...' : 'Đã đến cửa hàng'}
+            </button>
+          )}
 
           <label className="form-label">Vị trí hiện tại</label>
           <div className="field mb-3">
             <MapPin size={18} />
-            <input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder="Nhập vị trí hoặc tọa độ GPS" disabled={!canEditCheckpoint || saving} />
+            <input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder={locationPlaceholder} disabled={!canEditCheckpoint || saving} />
             <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-green-50 text-primary disabled:opacity-50" aria-label="Tự cập nhật GPS" disabled={!canEditCheckpoint || saving}>
               <LocateFixed size={17} />
             </button>
@@ -312,24 +395,15 @@ export function TransportCheckpointUpdate() {
             {conditionOptions.map((option) => <option key={option}>{option}</option>)}
           </select>
 
-          <label className="mb-3 flex min-h-12 items-center gap-3 rounded-xl border border-line bg-slate-50 px-3 text-sm font-bold text-ink">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-green-500"
-              checked={arrivedWarehouse}
-              onChange={(event) => setArrivedWarehouse(event.target.checked)}
-              disabled={!canEditCheckpoint || saving}
-            />
-            Đã đến cửa hàng/kho nhận
-          </label>
-
           <label className="form-label">Ghi chú checkpoint</label>
           <textarea className="input min-h-24 resize-none py-3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ghi nhận tình trạng thực tế tại trạm kiểm soát..." disabled={!canEditCheckpoint || saving} />
 
           {message && <p className="mt-3 text-sm font-semibold text-muted">{message}</p>}
-          <button className="primary-btn mt-4 w-full disabled:opacity-60" type="button" onClick={handleSave} disabled={!canEditCheckpoint || saving}>
-            {saving ? 'Đang lưu...' : 'Lưu cập nhật checkpoint'}
-          </button>
+          {canEditCheckpoint && !canContinueTransport && (
+            <button className="primary-btn mt-4 w-full disabled:opacity-60" type="button" onClick={handleSave} disabled={!canEditCheckpoint || saving}>
+              {saving ? 'Đang lưu...' : 'Lưu cập nhật checkpoint'}
+            </button>
+          )}
         </section>
       </div>
       <BottomNav />

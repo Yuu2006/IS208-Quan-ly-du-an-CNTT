@@ -191,6 +191,7 @@ export type TransporterTransport = {
   batchCode: string;
   product: string;
   route: string;
+  destinationName: string;
   status: string;
   driverName: string;
   licensePlate: string;
@@ -217,10 +218,11 @@ export type AssignTransportPayload = {
 };
 
 const statusMap: Record<string, BatchStatus> = {
-  CREATED: 'draft',
-  AT_WAREHOUSE: 'ready',
+  CREATED: 'ready',
+  AT_WAREHOUSE: 'at_warehouse',
   IN_TRANSIT: 'in_transit',
   DELIVERED: 'delivered',
+  INCIDENT_REPORTED: 'incident_reported',
   CANCELLED: 'cancelled'
 };
 
@@ -280,7 +282,7 @@ export function mapBatch(item: BackendBatch): Batch {
     quantity: Number.isFinite(quantity) ? quantity : 0,
     harvestDate: formatDate(item.harvestDate),
     expiryDate: formatDate(item.expiryDate),
-    status: statusMap[item.status ?? ''] ?? 'draft',
+    status: statusMap[item.status ?? ''] ?? 'ready',
     location: item.farmPartner?.address ?? item.farmPartner?.partnerName ?? 'Chưa cập nhật',
     certifications: item.certificates?.map(mapCertificate) ?? [],
     hasQR: item.qrCode?.status === 'ACTIVE',
@@ -344,7 +346,8 @@ const transportStatusLabels: Record<string, string> = {
   PENDING_PICKUP: 'Chờ nhận hàng',
   IN_TRANSIT: 'Đang vận chuyển',
   ARRIVED_WAREHOUSE: 'Đã đến kho',
-  DELIVERED: 'Đã giao'
+  DELIVERED: 'Đã giao',
+  INCIDENT_REPORTED: 'Có sự cố'
 };
 
 function numberOrNull(value?: string | number | null) {
@@ -380,6 +383,7 @@ function mapTransporterTransport(item: BackendTransport): TransporterTransport {
     batchCode: item.batch?.batchCode ?? `TR-${item.transportId}`,
     product: formatProduct(item.batch),
     route: `${shipper} → ${receiver}`,
+    destinationName: receiver,
     status: transportStatusLabels[item.transportStatus ?? ''] ?? item.transportStatus ?? 'Chưa cập nhật',
     driverName: item.driverName ?? 'Chưa cập nhật',
     licensePlate: item.licensePlate ?? 'Chưa cập nhật',
@@ -477,6 +481,11 @@ export async function updateBatchRecord(currentBatchCode: string, batch: Batch) 
   return mapBatch(data);
 }
 
+export async function cancelBatchRecord(batchCode: string) {
+  const { data } = await api.delete<BackendBatch>(`/batches/${encodeURIComponent(batchCode)}`);
+  return mapBatch(data);
+}
+
 export async function createCertificateForBatch(batchCode: string, cert: Omit<Certificate, 'id'>) {
   await api.post(`/batches/${encodeURIComponent(batchCode)}/certificates`, certificatePayload(cert));
   return getBatchByCode(batchCode);
@@ -507,6 +516,11 @@ export async function assignBatchTransport(batchCode: string, payload: AssignTra
 
   if (!data.batch) throw new Error('Assigned transport did not include batch data');
   return mapBatch(data.batch);
+}
+
+export async function continueTransport(transportId: string) {
+  const { data } = await api.post<BackendTransport>(`/transports/${encodeURIComponent(transportId)}/continue`);
+  return mapTransporterTransport(data);
 }
 
 export async function getStoreDeliveries(status?: 'pending' | 'delivered') {
