@@ -23,8 +23,15 @@ export type AuditContext = {
 
 /** Removes secrets before old/new payloads are persisted to immutable audit_log. */
 function redactAuditPayload(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(redactAuditPayload);
   if (!value || typeof value !== "object") return value;
+
+  const jsonValue = (value as { toJSON?: () => unknown }).toJSON;
+  if (typeof jsonValue === "function") {
+    return redactAuditPayload(jsonValue.call(value));
+  }
 
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, currentValue]) => {
     const normalizedKey = key.toLowerCase();
