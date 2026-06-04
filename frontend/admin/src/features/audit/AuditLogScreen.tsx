@@ -20,6 +20,7 @@ const actionLabels: Record<string, string> = {
   INCIDENT_REPORTED: 'Ghi nhận sự cố',
   ACCOUNT_CREATED: 'Tạo tài khoản',
   ACCOUNT_UPDATED: 'Cập nhật tài khoản',
+  ACCOUNT_STATUS_CHANGED: 'Cập nhật trạng thái tài khoản',
   ACCOUNT_LOCKED: 'Khóa tài khoản',
   ACCOUNT_UNLOCKED: 'Mở khóa tài khoản',
   PARTNER_APPROVED: 'Duyệt đối tác',
@@ -167,9 +168,14 @@ function businessPayloadSummary(entry: AuditLogEntry) {
     return `Cập nhật lô hàng ${batchCode}: ${fieldLabel(changedField)} từ ${displayValue(oldRecord[changedField])} sang ${displayValue(newRecord[changedField])}`;
   }
 
-  if (entry.action === 'ACCOUNT_LOCKED') {
+  if (entry.action === 'ACCOUNT_LOCKED' || (entry.action === 'ACCOUNT_STATUS_CHANGED' && newRecord.status === 'LOCKED')) {
     const username = newRecord.username ?? oldRecord.username ?? entry.objectId;
     return `Khóa tài khoản ${displayValue(username)}`;
+  }
+
+  if (entry.action === 'ACCOUNT_UNLOCKED' || (entry.action === 'ACCOUNT_STATUS_CHANGED' && newRecord.status === 'ACTIVE')) {
+    const username = newRecord.username ?? oldRecord.username ?? entry.objectId;
+    return `Mở khóa tài khoản ${displayValue(username)}`;
   }
   
   if (entry.action === 'TRANSPORT_ASSIGNED') {

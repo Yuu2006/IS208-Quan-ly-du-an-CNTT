@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { BarChart3, Download, Calendar, Tag, AlertTriangle, FileText, X, ChevronRight, Box, QrCode, Smartphone } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Download, Calendar, AlertTriangle, FileText, X, ChevronRight, Box, QrCode, Smartphone } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
 import { ExportPreviewModal } from '../../components/common/ExportPreviewModal';
 
@@ -8,6 +8,52 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | null>(null);
   const [detailCard, setDetailCard] = useState<any>(null);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState('thisMonth');
+
+  const matchesDateFilter = (value?: string) => {
+    if (dateFilter === 'all') return true;
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    if (dateFilter === 'thisMonth') {
+      return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    }
+    if (dateFilter === 'lastMonth') {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return date.getFullYear() === lastMonth.getFullYear() && date.getMonth() === lastMonth.getMonth();
+    }
+    if (dateFilter === 'thisQuarter') {
+      return date.getFullYear() === now.getFullYear() && Math.floor(date.getMonth() / 3) === Math.floor(now.getMonth() / 3);
+    }
+    return true;
+  };
+
+  const filteredInventory = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    return data.inventory.filter((row: any) => !normalizedSearch || [
+      row.id,
+      row.product,
+      row.initial,
+      row.shipped,
+      row.stock
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch)));
+  }, [data.inventory, searchQuery]);
+
+  const filteredExpiry = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    return data.expiry.filter((row: any) => {
+      const matchesSearch = !normalizedSearch || [
+        row.id,
+        row.product,
+        row.expiry,
+        row.daysLeft
+      ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
+
+      return matchesSearch && matchesDateFilter(row.expiry);
+    });
+  }, [data.expiry, dateFilter, searchQuery]);
 
   const showToast = (message: string) => {
     setToast({ message, visible: true });
@@ -59,7 +105,7 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
 
       {/* Reporting Filters */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center">
-        <div className="flex-1 min-w-[250px]">
+        <div className="flex-1 min-w-[250px]" onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}>
           <SearchBar placeholder="Tìm báo cáo, lô hàng..." />
         </div>
 
@@ -67,30 +113,11 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
 
         <div className="relative min-w-[150px]">
           <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select onChange={(e) => setDateFilter(['thisMonth', 'lastMonth', 'thisQuarter', 'all'][e.target.selectedIndex] ?? 'all')} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tháng này</option>
             <option>Tháng trước</option>
             <option>Quý này</option>
             <option>Tùy chỉnh...</option>
-          </select>
-        </div>
-
-        <div className="relative min-w-[150px]">
-          <Tag size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
-            <option>Sẵn sàng vận chuyển</option>
-            <option>Đang vận chuyển</option>
-            <option>Đã nhận</option>
-            <option>Tất cả trạng thái</option>
-          </select>
-        </div>
-
-        <div className="relative min-w-[150px]">
-          <BarChart3 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
-            <option>Nông trại A</option>
-            <option>Nông trại B</option>
-            <option>Tất cả nhà cung cấp</option>
           </select>
         </div>
       </div>
@@ -114,7 +141,7 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
             <div className="text-right">Tồn kho</div>
           </div>
           <div className="divide-y divide-slate-100">
-            {data.inventory.map((row: any) => (
+            {filteredInventory.map((row: any) => (
               <div key={row.id} className="grid grid-cols-5 gap-2 p-3 items-center text-sm hover:bg-slate-50 transition-colors cursor-pointer group">
                 <div className="font-mono text-slate-500 text-xs font-semibold bg-slate-100 px-2 py-1 rounded inline-block w-fit group-hover:bg-white border border-transparent group-hover:border-slate-200">{row.id}</div>
                 <div className="col-span-2 font-semibold text-slate-800">{row.product}</div>
@@ -135,7 +162,7 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
             <span className="px-3 py-1.5 bg-amber-100 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg shadow-sm">Khẩn cấp</span>
           </div>
           <div className="divide-y divide-slate-100">
-            {data.expiry.map((item: any) => (
+            {filteredExpiry.map((item: any) => (
               <div key={item.id} className="flex justify-between items-center p-4 hover:bg-amber-50/50 transition-colors cursor-pointer">
                 <div>
                   <div className="font-bold text-slate-800">{item.product}</div>
@@ -281,15 +308,15 @@ export function ReportsScreen({ data, onNavigateToShipment }: { data: any, onNav
         type={exportFormat || 'csv'}
         dataPreview={{
           columns: ['Mã lô', 'Sản phẩm', 'Đã xuất', 'Tồn kho', 'Hạn sử dụng'],
-          rows: data.inventory.map((row: any) => [
+          rows: filteredInventory.map((row: any) => [
             row.id,
             row.product,
             row.shipped,
             row.stock,
-            data.expiry.find((e: any) => e.product === row.product)?.expiry || '12/12/2026'
+            filteredExpiry.find((e: any) => e.product === row.product)?.expiry || '12/12/2026'
           ])
         }}
-        totalRows={120}
+        totalRows={filteredInventory.length}
       />
 
       {/* Toast Notification */}

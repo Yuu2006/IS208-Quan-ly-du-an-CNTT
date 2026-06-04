@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { api } from '../../config/api';
 import { Plus, UserCog, ToggleLeft, ToggleRight, MoreVertical, X, ChevronLeft, ChevronRight, ShieldCheck, Building2 } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
 
-export function AccountsScreen({ data }: { data: any }) {
+export function AccountsScreen(_props: { data: any }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [detailRow, setDetailRow] = useState<any>(null);
@@ -10,48 +11,193 @@ export function AccountsScreen({ data }: { data: any }) {
   const [confirmToggle, setConfirmToggle] = useState<any>(null);
   const [formErrors, setFormErrors] = useState<any>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addForm, setAddForm] = useState<any>({});
+  const [showPartnerModal, setShowPartnerModal] = useState(false);
+  const [unregisteredPartners, setUnregisteredPartners] = useState<any[]>([]);
+  const [fetchingPartners, setFetchingPartners] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
-  // Toggle state mock
-  const [rows, setRows] = useState(data.rows.map((r: any) => ({ ...r, isActive: !r.locked })));
+  const [rows, setRows] = useState<any[]>([]);
+  const [, setLoading] = useState(true);
 
-  const handleToggle = (id: string) => {
-    setRows(rows.map((r: any) => r.id === id ? { ...r, isActive: !r.isActive } : r));
+  const roleNames: Record<string, string> = {
+    ADMIN: 'Quản trị viên',
+    FARMER: 'Nông trại',
+    TRANSPORTER: 'Vận chuyển',
+    STORE: 'Cửa hàng',
+    WAREHOUSE: 'Nhân viên kho',
+    INSPECTOR: 'Điều phối viên'
+  };
+
+  const fetchAccounts = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/accounts');
+      const fetchedAccounts = res.data.map((acc: any) => ({
+        id: `ACC-${acc.accountId.toString().padStart(3, '0')}`,
+        accountId: acc.accountId,
+        name: acc.fullName || acc.username,
+        username: acc.username,
+        email: acc.email,
+        phone: acc.phone,
+        role: roleNames[acc.role] || acc.role,
+        rawRole: acc.role,
+        status: acc.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa',
+        isActive: acc.status === 'ACTIVE',
+        updatedAt: acc.updatedAt ? new Date(acc.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
+        locked: acc.status !== 'ACTIVE',
+        partnerId: acc.partnerId
+      }));
+      setRows(fetchedAccounts);
+      
+      try {
+        setFetchingPartners(true);
+        const pRes = await api.get('/partners');
+        const partnersWithoutAccounts = pRes.data.filter((p: any) => !p.account);
+        setUnregisteredPartners(partnersWithoutAccounts);
+      } catch(e) {
+        console.error("Failed to fetch partners for suggestion:", e);
+      } finally {
+        setFetchingPartners(false);
+      }
+    } catch (error) {
+      console.error("Failed to fetch accounts:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAccounts();
+  }, []);
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
+    return rows.filter((row: any) => {
+      const matchesSearch = !normalizedSearch || [
+        row.id,
+        row.name,
+        row.username,
+        row.email,
+        row.phone,
+        row.role,
+        row.rawRole,
+        row.partnerId ? String(row.partnerId) : ''
+      ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
+
+      const matchesRole = !roleFilter || row.rawRole === roleFilter;
+      const matchesStatus = !statusFilter || (statusFilter === 'ACTIVE' ? row.isActive : !row.isActive);
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [rows, searchQuery, roleFilter, statusFilter]);
+
+  const handleToggle = async (id: string) => {
+    const rowToToggle = rows.find(r => r.id === id);
+    if (!rowToToggle) return;
+    
+    try {
+      const newStatus = rowToToggle.isActive ? 'LOCKED' : 'ACTIVE';
+      await api.put(`/accounts/${rowToToggle.accountId}/status`, { status: newStatus });
+      setRows(rows.map((r: any) => r.id === id ? { ...r, isActive: !r.isActive, status: newStatus === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa' } : r));
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Không thể thay đổi trạng thái');
+    }
     setConfirmToggle(null);
   };
 
-  const mockSubmit = () => {
-    setIsSubmitting(true);
-    setFormErrors({});
-
-    // Simulate API call & Validation
-    setTimeout(() => {
-      setIsSubmitting(false);
-      // Giả lập lỗi để trình diễn luồng lỗi
-      setFormErrors({
-        username: 'Tên đăng nhập đã tồn tại trong hệ thống.',
-        email: 'Email không đúng định dạng. Vui lòng kiểm tra lại tên miền.',
-        password: 'Mật khẩu chưa đủ mạnh (cần chữ hoa, số và ký tự đặc biệt).',
-        role: 'Vui lòng chọn vai trò cho tài khoản.'
-      });
-
-      // Nếu không có lỗi thì sẽ show alert thành công
-      // alert('Tạo tài khoản thành công!');
-      // setShowAddModal(false);
-    }, 800);
+  const handleExtractData = () => {
+    setShowPartnerModal(true);
   };
 
-  const mockEditSubmit = () => {
+  const selectPartner = (p: any) => {
+    const roleMapping: any = {
+      FARM: 'FARMER',
+      STORE: 'STORE', // Hoặc WAREHOUSE tùy nhu cầu
+      TRANSPORT_COMPANY: 'TRANSPORTER'
+    };
+    setAddForm({
+      username: p.taxCode ? `partner_${p.taxCode}` : `partner_${p.partnerId}`,
+      password: '',
+      fullName: p.contactPerson || p.partnerName,
+      email: '',
+      phone: '',
+      role: roleMapping[p.partnerType] || '',
+      partnerId: p.partnerId
+    });
+    setFormErrors({});
+    setShowPartnerModal(false);
+  };
+
+  const submitAdd = async () => {
     setIsSubmitting(true);
     setFormErrors({});
 
-    setTimeout(() => {
+    try {
+      if (!addForm.username || !addForm.password || !addForm.role || !addForm.email) {
+        setFormErrors({
+          ...(!addForm.username ? { username: 'Tên đăng nhập không được để trống.' } : {}),
+          ...(!addForm.email ? { email: 'Email không đúng định dạng.' } : {}),
+          ...(!addForm.password ? { password: 'Mật khẩu chưa đủ mạnh.' } : {}),
+          ...(!addForm.role ? { role: 'Vui lòng chọn vai trò cho tài khoản.' } : {})
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const payload: any = {
+        username: addForm.username,
+        password: addForm.password,
+        fullName: addForm.fullName || addForm.name,
+        email: addForm.email,
+        phone: addForm.phone,
+        role: addForm.role,
+        status: 'ACTIVE'
+      };
+      
+      // Gắn partnerId nếu không phải là ADMIN và được trích xuất từ popup đối tác
+      if (addForm.role !== 'ADMIN' && addForm.partnerId) {
+        payload.partnerId = addForm.partnerId;
+      }
+
+      await api.post('/accounts', payload);
+      alert('Tạo tài khoản thành công!');
+      setShowAddModal(false);
+      setAddForm({});
+      fetchAccounts();
+    } catch (error: any) {
+      console.error(error);
+      alert(error.response?.data?.message || 'Có lỗi xảy ra khi tạo tài khoản');
+    } finally {
       setIsSubmitting(false);
-      // Simulate successful edit
-      setRows(rows.map((r: any) => r.id === editForm.id ? { ...r, ...editForm } : r));
-      setDetailRow({ ...detailRow, ...editForm }); // Update drawer detail
+    }
+  };
+
+  const submitEdit = async () => {
+    setIsSubmitting(true);
+    setFormErrors({});
+
+    try {
+      const payload = {
+        fullName: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone,
+        role: editForm.rawRole || editForm.role
+      };
+
+      await api.put(`/accounts/${editForm.accountId}`, payload);
       alert('Cập nhật tài khoản thành công!');
       setShowEditModal(false);
-    }, 600);
+      setDetailRow(null);
+      fetchAccounts();
+    } catch (error: any) {
+      console.error(error);
+      alert(error.response?.data?.message || 'Có lỗi xảy ra khi cập nhật tài khoản');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -72,7 +218,7 @@ export function AccountsScreen({ data }: { data: any }) {
 
       {/* Sleek Filters */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center">
-        <div className="flex-1 min-w-[250px]">
+        <div className="flex-1 min-w-[250px]" onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}>
           <SearchBar placeholder="Tìm tài khoản, email..." />
         </div>
 
@@ -80,7 +226,7 @@ export function AccountsScreen({ data }: { data: any }) {
 
         <div className="relative min-w-[150px]">
           <ShieldCheck size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select onChange={(e) => setRoleFilter(['', 'ADMIN', 'WAREHOUSE', 'INSPECTOR'][e.target.selectedIndex] ?? '')} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tất cả vai trò</option>
             <option>Quản trị viên</option>
             <option>Quản lý kho</option>
@@ -90,20 +236,10 @@ export function AccountsScreen({ data }: { data: any }) {
 
         <div className="relative min-w-[150px]">
           <ToggleRight size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select onChange={(e) => setStatusFilter(['', 'ACTIVE', 'LOCKED'][e.target.selectedIndex] ?? '')} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tất cả trạng thái</option>
             <option>Đang hoạt động</option>
             <option>Đã khóa</option>
-          </select>
-        </div>
-
-        <div className="relative min-w-[150px]">
-          <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
-            <option>Tất cả đơn vị</option>
-            <option>Trụ sở chính</option>
-            <option>Kho Q1</option>
-            <option>Kho Bình Dương</option>
           </select>
         </div>
       </div>
@@ -119,7 +255,7 @@ export function AccountsScreen({ data }: { data: any }) {
           <div></div>
         </div>
         <div className="divide-y divide-slate-100">
-          {rows.map((row: any) => (
+          {filteredRows.map((row: any) => (
             <div key={row.id} className="grid grid-cols-[1fr_1fr_40px] gap-4 p-4 items-center hover:bg-slate-50/50 transition-colors text-sm">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
@@ -183,84 +319,99 @@ export function AccountsScreen({ data }: { data: any }) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
               <h3 className="text-xl font-bold text-slate-800">Thêm tài khoản mới</h3>
-              <button onClick={() => { setShowAddModal(false); setFormErrors({}); }} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={() => { setShowAddModal(false); setFormErrors({}); setAddForm({}); }} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-colors">
                 <X size={20} />
               </button>
             </div>
 
             <div className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
               {/* Suggestion alert - 1a */}
-              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex justify-between items-center">
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div className="text-sm text-blue-800">
-                  <span className="font-bold">Đề xuất tạo tài khoản:</span> Hệ thống phát hiện có <strong>3 hồ sơ đối tác mới</strong> (từ Form Đăng ký) chưa được cấp tài khoản.
+                  <span className="font-bold">Đề xuất tạo tài khoản:</span> Hệ thống phát hiện có <strong>{unregisteredPartners.length} hồ sơ đối tác mới</strong> (từ Form Đăng ký) chưa được cấp tài khoản.
                 </div>
-                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap">
+                <button 
+                  onClick={handleExtractData} 
+                  disabled={unregisteredPartners.length === 0}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   Xem và trích xuất dữ liệu
                 </button>
               </div>
 
-              {Object.keys(formErrors).length > 0 && (
-                <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-sm font-medium">
-                  <span className="font-bold">Lưu ý:</span> Vui lòng kiểm tra lại các thông tin chưa hợp lệ.
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Tên đăng nhập <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="Nhập tên đăng nhập duy nhất..." className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.username ? 'border-red-300 focus:ring-red-500/50 focus:border-red-500' : 'border-slate-200 focus:ring-sage-500/50 focus:border-sage-500'} rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all`} />
-                  {formErrors.username && <p className="text-red-500 text-xs font-medium mt-1.5">{formErrors.username}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Mật khẩu tạm <span className="text-red-500">*</span></label>
-                  <input type="password" placeholder="Tối thiểu 8 ký tự, có chữ hoa, số..." className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.password ? 'border-red-300 focus:ring-red-500/50 focus:border-red-500' : 'border-slate-200 focus:ring-sage-500/50 focus:border-sage-500'} rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all`} />
-                  {formErrors.password && <p className="text-red-500 text-xs font-medium mt-1.5">{formErrors.password}</p>}
-                </div>
-                <div className="col-span-1 md:col-span-2">
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Họ và tên <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="Nhập họ và tên..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/50 focus:border-sage-500 outline-none transition-all" />
-                </div>
-                <div className="col-span-1 md:col-span-2">
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Email <span className="text-red-500">*</span></label>
-                  <input type="email" placeholder="Nhập địa chỉ email hợp lệ..." className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.email ? 'border-red-300 focus:ring-red-500/50 focus:border-red-500' : 'border-slate-200 focus:ring-sage-500/50 focus:border-sage-500'} rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all`} />
-                  {formErrors.email && <p className="text-red-500 text-xs font-medium mt-1.5">{formErrors.email}</p>}
-                </div>
-                <div className="col-span-1 md:col-span-2">
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Số điện thoại <span className="text-red-500">*</span></label>
-                  <input type="tel" placeholder="Nhập số điện thoại..." className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.phone ? 'border-red-300 focus:ring-red-500/50 focus:border-red-500' : 'border-slate-200 focus:ring-sage-500/50 focus:border-sage-500'} rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all`} />
-                  {formErrors.phone && <p className="text-red-500 text-xs font-medium mt-1.5">{formErrors.phone}</p>}
-                </div>
-                <div className="col-span-1 md:col-span-2">
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Vai trò <span className="text-red-500">*</span></label>
-                  <select className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.role ? 'border-red-300 focus:ring-red-500/50 focus:border-red-500' : 'border-slate-200 focus:ring-sage-500/50 focus:border-sage-500'} rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all cursor-pointer appearance-none`}>
-                    <option value="">-- Chọn vai trò --</option>
-                    <option value="admin">Quản trị viên</option>
-                    <option value="farm">Nông trại</option>
-                    <option value="shipping">Vận chuyển</option>
-                    <option value="store">Cửa hàng</option>
-                    <option value="warehouse">Nhân viên kho</option>
-                  </select>
-                  {formErrors.role && <p className="text-red-500 text-xs font-medium mt-1.5">{formErrors.role}</p>}
+                  <input
+                    type="text"
+                    value={addForm.username || ''}
+                    onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all ${formErrors.username ? 'border-red-300' : 'border-slate-200'}`}
+                    placeholder="vd: partner_001"
+                  />
+                  {formErrors.username && <div className="text-xs text-red-500 mt-1">{formErrors.username}</div>}
                 </div>
 
-                <div className="col-span-1 md:col-span-2 pt-2 border-t border-slate-100">
-                  <label className="block text-sm font-bold text-slate-700 mb-3">Trạng thái tài khoản ban đầu <span className="text-red-500">*</span></label>
-                  <div className="flex gap-8">
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <div className="relative flex items-center justify-center w-5 h-5">
-                        <input type="radio" name="status" defaultChecked className="peer appearance-none w-5 h-5 border-2 border-slate-300 rounded-full checked:border-sage-600 transition-colors" />
-                        <div className="absolute w-2.5 h-2.5 bg-sage-600 rounded-full scale-0 peer-checked:scale-100 transition-transform"></div>
-                      </div>
-                      <span className="text-sm font-semibold text-slate-700 group-hover:text-sage-700 transition-colors">Hoạt động</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <div className="relative flex items-center justify-center w-5 h-5">
-                        <input type="radio" name="status" className="peer appearance-none w-5 h-5 border-2 border-slate-300 rounded-full checked:border-sage-600 transition-colors" />
-                        <div className="absolute w-2.5 h-2.5 bg-sage-600 rounded-full scale-0 peer-checked:scale-100 transition-transform"></div>
-                      </div>
-                      <span className="text-sm font-semibold text-slate-700 group-hover:text-sage-700 transition-colors">Chờ kích hoạt</span>
-                    </label>
-                  </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Email <span className="text-red-500">*</span></label>
+                  <input
+                    type="email"
+                    value={addForm.email || ''}
+                    onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all ${formErrors.email ? 'border-red-300' : 'border-slate-200'}`}
+                    placeholder="name@example.com"
+                  />
+                  {formErrors.email && <div className="text-xs text-red-500 mt-1">{formErrors.email}</div>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Họ và tên</label>
+                  <input
+                    type="text"
+                    value={addForm.fullName || ''}
+                    onChange={(e) => setAddForm({ ...addForm, fullName: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all"
+                    placeholder="Nguyễn Văn A"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Số điện thoại</label>
+                  <input
+                    type="tel"
+                    value={addForm.phone || ''}
+                    onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all"
+                    placeholder="+84 90 123 4567"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Mật khẩu tạm <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    value={addForm.password || ''}
+                    onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all ${formErrors.password ? 'border-red-300' : 'border-slate-200'}`}
+                    placeholder="Nhập mật khẩu tạm"
+                  />
+                  {formErrors.password && <div className="text-xs text-red-500 mt-1">{formErrors.password}</div>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Vai trò <span className="text-red-500">*</span></label>
+                  <select
+                    value={addForm.role || ''}
+                    onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none ${formErrors.role ? 'border-red-300' : 'border-slate-200'}`}
+                  >
+                    <option value="">Chọn vai trò</option>
+                    <option value="ADMIN">Quản trị viên</option>
+                    <option value="FARMER">Nông trại</option>
+                    <option value="STORE">Cửa hàng</option>
+                    <option value="TRANSPORTER">Vận chuyển</option>
+                  </select>
+                  {formErrors.role && <div className="text-xs text-red-500 mt-1">{formErrors.role}</div>}
                 </div>
 
                 <div className="col-span-1 md:col-span-2 mt-2">
@@ -280,13 +431,13 @@ export function AccountsScreen({ data }: { data: any }) {
 
             <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 shrink-0">
               <button
-                onClick={() => { setShowAddModal(false); setFormErrors({}); }}
+                onClick={() => { setShowAddModal(false); setFormErrors({}); setAddForm({}); }}
                 className="px-6 py-3 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 rounded-xl transition-colors shadow-sm"
               >
                 Hủy bỏ
               </button>
               <button
-                onClick={mockSubmit}
+                onClick={submitAdd}
                 disabled={isSubmitting}
                 className="px-6 py-3 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 disabled:opacity-70 disabled:cursor-not-allowed rounded-xl transition-colors shadow-sm flex items-center gap-2"
               >
@@ -299,6 +450,54 @@ export function AccountsScreen({ data }: { data: any }) {
                   'Lưu & Tạo tài khoản'
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Select Partner Modal */}
+      {showPartnerModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
+              <h3 className="text-xl font-bold text-slate-800">Chọn đối tác để cấp tài khoản</h3>
+              <button onClick={() => setShowPartnerModal(false)} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+              {fetchingPartners ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                  <div className="w-8 h-8 border-4 border-sage-200 border-t-sage-600 rounded-full animate-spin mb-4"></div>
+                  <div>Đang tải danh sách đối tác...</div>
+                </div>
+              ) : unregisteredPartners.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                  <Building2 size={48} className="text-slate-300 mb-4" />
+                  <div>Không có đối tác nào đang chờ cấp tài khoản.</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {unregisteredPartners.map(p => (
+                    <div key={p.partnerId} onClick={() => selectPartner(p)} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-sage-500 hover:shadow-md cursor-pointer transition-all group">
+                      <div>
+                        <div className="font-bold text-slate-800 group-hover:text-sage-700 transition-colors">{p.partnerName}</div>
+                        <div className="text-sm text-slate-500 mt-1 flex items-center gap-2">
+                          <span>Người liên hệ: <span className="font-medium text-slate-700">{p.contactPerson || 'N/A'}</span></span>
+                          <span className="text-slate-300">•</span>
+                          <span>MST: <span className="font-medium text-slate-700">{p.taxCode || 'N/A'}</span></span>
+                        </div>
+                        <div className="text-xs text-sage-600 font-bold mt-2.5 px-2.5 py-1 bg-sage-100 rounded-md inline-block uppercase tracking-wider">
+                          {p.partnerType === 'FARM' ? 'Nông trại' : p.partnerType === 'STORE' ? 'Cửa hàng' : p.partnerType === 'TRANSPORT_COMPANY' ? 'Vận chuyển' : p.partnerType}
+                        </div>
+                      </div>
+                      <div className="text-slate-300 group-hover:text-sage-600 transition-colors bg-slate-50 group-hover:bg-sage-100 p-2 rounded-full">
+                        <ChevronRight size={20} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -328,7 +527,7 @@ export function AccountsScreen({ data }: { data: any }) {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Liên hệ & Đơn vị</h5>
+                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Lien he</h5>
                   <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-4">
                     <div>
                       <div className="text-xs text-slate-500 mb-1">Email</div>
@@ -338,15 +537,11 @@ export function AccountsScreen({ data }: { data: any }) {
                       <div className="text-xs text-slate-500 mb-1">Số điện thoại</div>
                       <div className="text-sm font-semibold text-slate-800">+84 90 123 4567</div>
                     </div>
-                    <div>
-                      <div className="text-xs text-slate-500 mb-1">Bộ phận công tác</div>
-                      <div className="text-sm font-semibold text-slate-800">Kho trung tâm miền Nam</div>
-                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Hoạt động & Bảo mật</h5>
+                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Hoat dong & Bao mat</h5>
                   <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-4">
                     <div>
                       <div className="text-xs text-slate-500 mb-1">Đăng nhập gần nhất</div>
@@ -445,7 +640,7 @@ export function AccountsScreen({ data }: { data: any }) {
                 Hủy bỏ
               </button>
               <button
-                onClick={mockEditSubmit}
+                onClick={submitEdit}
                 disabled={isSubmitting}
                 className="px-6 py-3 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 disabled:opacity-70 disabled:cursor-not-allowed rounded-xl transition-colors shadow-sm flex items-center gap-2"
               >
