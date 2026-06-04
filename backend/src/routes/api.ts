@@ -1093,6 +1093,15 @@ apiRouter.get("/accounts", authenticate, requireRole("ADMIN"), async (_req, res,
         status: true,
         createdAt: true,
         updatedAt: true,
+        partner: {
+          select: {
+            partnerId: true,
+            partnerName: true,
+            partnerType: true,
+            taxCode: true,
+            contactPerson: true,
+          },
+        },
       },
     });
 
