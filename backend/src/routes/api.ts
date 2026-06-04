@@ -472,7 +472,9 @@ apiRouter.post("/auth/login", async (req, res, next) => {
       },
     });
 
-    const resolvedRole = account ? loginRoleForAccountRole(account.role) : undefined;
+    const resolvedRole = account
+      ? (account.role === "ADMIN" ? mapAccountRoleToLoginRole(account.role) : loginRoleForAccountRole(account.role))
+      : undefined;
 
     if (!account || account.passwordHash !== password) {
       await appendAuditLog(prisma, {
@@ -931,13 +933,13 @@ async function sendBatchAuditTimeline(req: RequestWithUser, res: Parameters<Requ
       source: "audit",
     }));
 
-    const statusItems = statusHistory.map((item) => ({
+    const statusItems = statusHistory.map((item, index) => ({
       id: `status-${String(item.historyId)}`,
       timestamp: item.changedAt.toISOString(),
       actor: item.changer?.fullName ?? item.changer?.username ?? "Hệ thống",
       action: "BATCH_STATUS_CHANGED",
       label: "Cập nhật trạng thái lô hàng",
-      from: "N/A",
+      from: index === 0 ? "N/A" : statusHistory[index - 1].status,
       to: item.status,
       objectType: "BATCH_STATUS_HISTORY",
       objectId: String(item.historyId),
@@ -950,12 +952,19 @@ async function sendBatchAuditTimeline(req: RequestWithUser, res: Parameters<Requ
       source: "status-history",
     }));
 
-    const items = [...auditItems, ...statusItems].sort((left, right) => (
-      new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime()
-    ));
+    const items = [...auditItems, ...statusItems].sort((left, right) => {
+      const diff = new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime();
+      if (Math.abs(diff) < 1000) {
+        if (left.source === "audit" && right.source === "status-history") return -1;
+        if (left.source === "status-history" && right.source === "audit") return 1;
+      }
+      return diff;
+    });
 
     res.json(jsonSafe({
       batchId: batch.batchCode,
+      targetId: batch.batchCode,
+      targetType: "BATCH",
       summary: `${items.length} bản ghi · ${statusHistory.length} trạng thái`,
       items,
     }));
@@ -971,6 +980,93 @@ apiRouter.get("/batches/:batchId/audit-logs", authenticate, requireRole("ADMIN")
 /** Alias endpoint for the UC27 batch timeline from the Audit Log module. */
 apiRouter.get("/audit-logs/batches/:batchCode/timeline", authenticate, requireRole("ADMIN"), async (req: RequestWithUser, res, next) => {
   await sendBatchAuditTimeline(req, res, next, paramText(req.params.batchCode));
+});
+
+/** Builds the timeline for all audit changes of one transport. */
+async function sendTransportAuditTimeline(req: RequestWithUser, res: Parameters<RequestHandler>[1], next: Parameters<RequestHandler>[2], transportIdentifier: string) {
+  try {
+    const transportNumericId = Number(transportIdentifier);
+    const transport = await prisma.transport.findFirst({
+      where: { transportId: transportNumericId },
+      include: {
+        checkpoints: { select: { checkpointId: true } },
+        incidents: { select: { incidentId: true } },
+        farmPartner: { select: { partnerName: true } },
+        shipperPartner: { select: { partnerName: true } },
+        storePartner: { select: { partnerName: true } },
+        receiverPartner: { select: { partnerName: true } },
+      },
+    });
+
+    if (!transport) {
+      res.status(404).json({ message: "Transport not found" });
+      return;
+    }
+
+    const objectIds = new Map<string, Set<string>>();
+    const addObjectId = (objectType: string, objectId: string | number | null | undefined) => {
+      if (objectId === null || objectId === undefined) return;
+      const key = objectType.toUpperCase();
+      objectIds.set(key, (objectIds.get(key) ?? new Set<string>()).add(String(objectId)));
+    };
+
+    addObjectId("TRANSPORT", transport.transportId);
+    transport.checkpoints.forEach((checkpoint) => addObjectId("TRANSPORT_CHECKPOINT", checkpoint.checkpointId));
+    transport.incidents.forEach((incident) => addObjectId("INCIDENT", incident.incidentId));
+
+    const auditWhere = Array.from(objectIds.entries()).map(([objectType, ids]) => ({
+      objectType,
+      objectId: { in: Array.from(ids) },
+    }));
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { OR: auditWhere },
+      orderBy: { createdAt: "asc" },
+      include: {
+        actor: {
+          select: {
+            accountId: true,
+            username: true,
+            fullName: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    const items = auditLogs.map((item) => ({
+      id: `audit-${String(item.auditId)}`,
+      timestamp: item.createdAt.toISOString(),
+      actor: item.actor?.fullName ?? item.actor?.username ?? "Hệ thống",
+      action: item.action,
+      label: item.action,
+      from: auditValueSummary(item.oldValue),
+      to: auditValueSummary(item.newValue),
+      objectType: item.objectType,
+      objectId: item.objectId,
+      ip: item.ipAddress ?? "",
+      payload: mapAuditLog(item),
+      source: "audit",
+    }));
+
+    res.json(jsonSafe({
+      targetId: String(transport.transportId),
+      targetType: "TRANSPORT",
+      summary: `${items.length} bản ghi`,
+      metadata: {
+        fromName: transport.farmPartner?.partnerName || transport.shipperPartner?.partnerName || 'Nơi lấy hàng',
+        toName: transport.storePartner?.partnerName || transport.receiverPartner?.partnerName || 'Nơi giao hàng'
+      },
+      items,
+    }));
+  } catch (error) {
+    next(error);
+  }
+}
+
+apiRouter.get("/transports/:transportId/audit-logs", authenticate, requireRole("ADMIN"), async (req: RequestWithUser, res, next) => {
+  await sendTransportAuditTimeline(req, res, next, paramText(req.params.transportId));
 });
 
 /** Lists accounts for UC01 account management; admin-only. */

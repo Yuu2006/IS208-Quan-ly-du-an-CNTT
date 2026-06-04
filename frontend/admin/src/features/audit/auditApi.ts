@@ -31,8 +31,14 @@ export type AuditLogSummary = {
 };
 
 export type AuditLogTimeline = {
-  batchId: string;
+  batchId?: string; // Tương thích ngược
+  targetId?: string;
+  targetType?: 'BATCH' | 'TRANSPORT';
   summary: string;
+  metadata?: {
+    fromName?: string;
+    toName?: string;
+  };
   items: Array<{
     id: string;
     timestamp: string;
@@ -86,5 +92,11 @@ export async function getAuditLogDetail(auditId: string) {
 /** Gọi API UC27 để lấy timeline thay đổi của một lô hàng. */
 export async function getBatchAuditTimeline(batchCodeOrId: string) {
   const { data } = await api.get<AuditLogTimeline>(`/batches/${encodeURIComponent(batchCodeOrId)}/audit-logs`);
+  return data;
+}
+
+/** Gọi API để lấy timeline thay đổi của một chuyến xe. */
+export async function getTransportAuditTimeline(transportId: string) {
+  const { data } = await api.get<AuditLogTimeline>(`/transports/${encodeURIComponent(transportId)}/audit-logs`);
   return data;
 }
