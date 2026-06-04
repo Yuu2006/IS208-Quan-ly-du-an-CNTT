@@ -31,6 +31,33 @@ export function AccountsScreen(_props: { data: any }) {
     INSPECTOR: 'Điều phối viên'
   };
 
+  const partnerTypeNames: Record<string, string> = {
+    FARM: 'Nông trại',
+    TRANSPORT_COMPANY: 'Vận chuyển',
+    STORE: 'Cửa hàng'
+  };
+
+  const emptyValue = 'Chưa cập nhật';
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return emptyValue;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return emptyValue;
+
+    return date.toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  const displayValue = (value?: string | number | null) => {
+    if (value === null || value === undefined || value === '') return emptyValue;
+    return String(value);
+  };
+
   const fetchAccounts = async () => {
     try {
       setLoading(true);
@@ -46,9 +73,17 @@ export function AccountsScreen(_props: { data: any }) {
         rawRole: acc.role,
         status: acc.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa',
         isActive: acc.status === 'ACTIVE',
-        updatedAt: acc.updatedAt ? new Date(acc.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
+        createdAt: acc.createdAt,
+        updatedAt: acc.updatedAt,
+        createdAtDisplay: formatDateTime(acc.createdAt),
+        updatedAtDisplay: formatDateTime(acc.updatedAt),
         locked: acc.status !== 'ACTIVE',
-        partnerId: acc.partnerId
+        partnerId: acc.partnerId,
+        partnerName: acc.partner?.partnerName,
+        partnerType: acc.partner?.partnerType,
+        partnerTypeLabel: partnerTypeNames[acc.partner?.partnerType] || acc.partner?.partnerType,
+        taxCode: acc.partner?.taxCode,
+        contactPerson: acc.partner?.contactPerson
       }));
       setRows(fetchedAccounts);
       
@@ -506,7 +541,7 @@ export function AccountsScreen(_props: { data: any }) {
       {/* Detail Profile Drawer/Modal */}
       {detailRow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-lg font-bold text-slate-800">Thông tin chi tiết</h3>
               <button onClick={() => setDetailRow(null)} className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200 shadow-sm">
@@ -525,32 +560,70 @@ export function AccountsScreen(_props: { data: any }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Lien he</h5>
+                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Liên hệ</h5>
                   <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-4">
                     <div>
+                      <div className="text-xs text-slate-500 mb-1">Tên đăng nhập</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.username)}</div>
+                    </div>
+                    <div>
                       <div className="text-xs text-slate-500 mb-1">Email</div>
-                      <div className="text-sm font-semibold text-slate-800">{detailRow.email}</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.email)}</div>
                     </div>
                     <div>
                       <div className="text-xs text-slate-500 mb-1">Số điện thoại</div>
-                      <div className="text-sm font-semibold text-slate-800">+84 90 123 4567</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.phone)}</div>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Hoat dong & Bao mat</h5>
+                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Tài khoản</h5>
                   <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-4">
                     <div>
-                      <div className="text-xs text-slate-500 mb-1">Đăng nhập gần nhất</div>
-                      <div className="text-sm font-semibold text-slate-800">14:32 - Hôm nay<br /><span className="text-xs text-slate-500 font-normal">IP: 112.197.xx.xx</span></div>
+                      <div className="text-xs text-slate-500 mb-1">Mã tài khoản</div>
+                      <div className="text-sm font-semibold text-slate-800">{detailRow.id}<br /><span className="text-xs text-slate-500 font-normal">{displayValue(detailRow.rawRole)}</span></div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500 mb-1">Người tạo tài khoản</div>
-                      <div className="text-sm font-semibold text-slate-800">Quản trị viên (Trần Q.)</div>
-                      <div className="text-xs text-slate-400 mt-0.5">Lúc 08:00 - 12/04/2026</div>
+                      <div className="text-xs text-slate-500 mb-1">Trạng thái</div>
+                      <div className="text-sm font-semibold text-slate-800">{detailRow.isActive ? 'Đang hoạt động' : 'Đã khóa'}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Cập nhật: {detailRow.updatedAtDisplay}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Đối tác liên kết</h5>
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-4">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Tên đối tác</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.partnerName)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Loại đối tác</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.partnerTypeLabel)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Mã số thuế</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.taxCode)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h5 className="text-xs font-bold uppercase tracking-widest text-slate-400">Hoạt động</h5>
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-4">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Ngày tạo tài khoản</div>
+                      <div className="text-sm font-semibold text-slate-800">{detailRow.createdAtDisplay}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Cập nhật gần nhất</div>
+                      <div className="text-sm font-semibold text-slate-800">{detailRow.updatedAtDisplay}</div>
                     </div>
                   </div>
                 </div>
@@ -560,7 +633,7 @@ export function AccountsScreen(_props: { data: any }) {
             <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end">
               <button 
                 onClick={() => {
-                  setEditForm({ ...detailRow, phone: '+84 90 123 4567' }); // Mock phone since it's not in basic list
+                  setEditForm({ ...detailRow });
                   setShowEditModal(true);
                 }}
                 className="px-6 py-2.5 text-sm font-bold text-white bg-sage-600 hover:bg-sage-700 rounded-xl transition-colors shadow-sm"
