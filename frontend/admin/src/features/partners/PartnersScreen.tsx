@@ -169,6 +169,52 @@ export function PartnersScreen({ data: _data }: { data: any }) {
     }
   };
 
+  const formatNumber = (value: unknown) => {
+    const numberValue = Number(value ?? 0);
+    return Number.isFinite(numberValue) ? numberValue.toLocaleString('vi-VN') : '0';
+  };
+
+  const formatList = (value: unknown) => {
+    if (!Array.isArray(value) || value.length === 0) return 'Chưa có dữ liệu';
+    return value.join(', ');
+  };
+
+  const formatCountWithList = (count: unknown, unit: string, values: unknown) => {
+    const countText = `${formatNumber(count)} ${unit}`;
+    const detailText = formatList(values);
+    return detailText === 'Chưa có dữ liệu' ? countText : `${countText}: ${detailText}`;
+  };
+
+  const getActivityItems = (partner: any) => {
+    const stats = partner?.stats ?? {};
+
+    if (partner?.rawType === 'TRANSPORT_COMPANY') {
+      return [
+        { icon: Clock, label: 'Tài xế đã ghi nhận', value: formatList(stats.drivers) },
+        { icon: BarChart3, label: 'Biển số đã ghi nhận', value: formatList(stats.licensePlates) },
+      ];
+    }
+
+    if (partner?.rawType === 'FARM') {
+      return [
+        { icon: MapPin, label: 'Lô hàng đã tạo', value: `${formatNumber(stats.farmBatchesCount)} lô` },
+        { icon: CheckCircle2, label: 'Chứng chỉ đã ghi nhận', value: formatCountWithList(stats.certificatesCount, 'chứng chỉ', stats.certificates) },
+      ];
+    }
+
+    if (partner?.rawType === 'STORE') {
+      return [
+        { icon: BarChart3, label: 'Chuyến nhận hàng', value: `${formatNumber(stats.storeTransportsCount)} chuyến` },
+        { icon: Building2, label: 'Mã hồ sơ đối tác', value: partner?.id ?? 'Chưa có dữ liệu' },
+      ];
+    }
+
+    return [
+      { icon: Building2, label: 'Mã hồ sơ đối tác', value: partner?.id ?? 'Chưa có dữ liệu' },
+      { icon: CheckCircle2, label: 'Trạng thái hợp tác', value: partner?.status ?? 'Chưa có dữ liệu' },
+    ];
+  };
+
   void submitApproval;
   void submitAddPartner;
 
@@ -301,7 +347,7 @@ export function PartnersScreen({ data: _data }: { data: any }) {
                   </span>
                 </div>
                 <h2 className="text-xl font-bold text-slate-800">{selectedPartner.name}</h2>
-                <p className="text-slate-500 text-sm mt-1">{selectedPartner.type} • {selectedPartner.taxCode || 'MST: 0102030405'}</p>
+                <p className="text-slate-500 text-sm mt-1">{selectedPartner.type} • {selectedPartner.taxCode || 'Chưa cập nhật MST'}</p>
               </div>
               <div className="flex flex-col gap-2 items-end">
                 <button onClick={() => setSelectedPartner(null)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200 shadow-sm">
@@ -356,62 +402,19 @@ export function PartnersScreen({ data: _data }: { data: any }) {
               <div className="border-t border-slate-100 pt-6 mb-6 animate-in fade-in slide-in-from-top-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Thông tin hoạt động</h3>
                 <div className="space-y-4">
-                  {selectedPartner.type.includes('Vận chuyển') && (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Clock size={16} /></div>
+                  {getActivityItems(selectedPartner).map((item) => {
+                    const Icon = item.icon;
+                    const isEmpty = item.value === 'Chưa có dữ liệu';
+                    return (
+                      <div key={item.label} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Icon size={16} /></div>
                         <div>
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Danh sách xe</div>
-                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
+                          <div className="text-[10px] font-bold uppercase text-slate-400">{item.label}</div>
+                          <div className={`text-sm font-semibold ${isEmpty ? 'text-slate-400 italic' : 'text-slate-800'}`}>{item.value}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><BarChart3 size={16} /></div>
-                        <div>
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Tải trọng tổng</div>
-                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {selectedPartner.type.includes('Nông trại') && (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><MapPin size={16} /></div>
-                        <div>
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Diện tích canh tác</div>
-                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><CheckCircle2 size={16} /></div>
-                        <div>
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Chứng chỉ chất lượng</div>
-                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {selectedPartner.type.includes('Cửa hàng') && (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Clock size={16} /></div>
-                        <div>
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Giờ hoạt động</div>
-                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Building2 size={16} /></div>
-                        <div>
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Người quản lý</div>
-                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
-                        </div>
-                      </div>
-                    </>
-                  )}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -876,7 +879,7 @@ export function PartnersScreen({ data: _data }: { data: any }) {
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Mã số thuế</label>
-                    <input type="text" defaultValue={selectedPartner.taxCode || '0102030405'} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
+                    <input type="text" defaultValue={selectedPartner.taxCode || ''} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Người đại diện</label>
