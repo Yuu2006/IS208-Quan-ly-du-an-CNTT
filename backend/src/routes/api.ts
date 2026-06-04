@@ -1270,6 +1270,15 @@ apiRouter.get("/partners", authenticate, requireRole("ADMIN", "INSPECTOR"), asyn
             licensePlate: true,
           }
         },
+        certificates: {
+          orderBy: { certificateId: "asc" },
+          select: {
+            certificateId: true,
+            certType: true,
+            issuedBy: true,
+            status: true,
+          },
+        },
         _count: {
           select: {
             farmBatches: true,
@@ -1283,12 +1292,17 @@ apiRouter.get("/partners", authenticate, requireRole("ADMIN", "INSPECTOR"), asyn
     const formatted = partners.map(p => {
        const uniqueDrivers = Array.from(new Set(p.transporterTransports.map(t => t.driverName).filter(Boolean)));
        const uniquePlates = Array.from(new Set(p.transporterTransports.map(t => t.licensePlate).filter(Boolean)));
+       const certificateLabels = p.certificates.map(c => {
+         const issuer = c.issuedBy ? ` - ${c.issuedBy}` : "";
+         return `#${c.certificateId} ${c.certType}${issuer}`;
+       });
        return {
          ...p,
          transporterTransports: undefined,
          stats: {
            farmBatchesCount: p._count.farmBatches,
            certificatesCount: p._count.certificates,
+           certificates: certificateLabels,
            storeTransportsCount: p._count.storeTransports,
            drivers: uniqueDrivers,
            licensePlates: uniquePlates
