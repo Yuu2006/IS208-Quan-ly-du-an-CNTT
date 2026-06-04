@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { Plus, AlertCircle, CheckCircle2, X, Calendar, Tag, BarChart3, Building2, MapPin, Mail, Phone, Edit2, ShieldAlert, MoreVertical, Clock, ChevronDown, ArrowRight, ToggleLeft, ToggleRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Plus, AlertCircle, CheckCircle2, X, Tag, BarChart3, Building2, MapPin, Mail, Phone, Edit2, ShieldAlert, MoreVertical, Clock, ChevronDown, ArrowRight, ToggleLeft, ToggleRight } from 'lucide-react';
 import { SearchBar } from '../../components/common/SearchBar';
+import { useEffect } from 'react';
+import { api } from '../../config/api';
 
 // Utility for hiding scrollbars
 const scrollbarHideStyle = `
@@ -13,7 +15,7 @@ const scrollbarHideStyle = `
   }
 `;
 
-export function PartnersScreen({ data }: { data: any }) {
+export function PartnersScreen({ data: _data }: { data: any }) {
   const [selectedPartner, setSelectedPartner] = useState<any>(null);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showAddPartnerModal, setShowAddPartnerModal] = useState(false);
@@ -27,18 +29,88 @@ export function PartnersScreen({ data }: { data: any }) {
   const [newPlate, setNewPlate] = useState('');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('22:00');
-  const [partnerRows, setPartnerRows] = useState(data.rows);
+  const [partnerRows, setPartnerRows] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
-  const handleTogglePartner = () => {
-    const isLocked = selectedPartner.status === 'Đã khóa';
-    const newStatus = isLocked ? 'Đang hoạt động' : 'Đã khóa';
-    const newTone = isLocked ? 'active' : 'locked';
-    
-    setPartnerRows(partnerRows.map((r: any) => r.id === selectedPartner.id ? { ...r, status: newStatus, tone: newTone } : r));
-    setSelectedPartner({ ...selectedPartner, status: newStatus, tone: newTone });
-    setShowToggleModal(false);
-    setToggleReason('');
-    alert(`Đã ${isLocked ? 'mở khóa' : 'khóa'} đối tác thành công!`);
+  const [addForm, setAddForm] = useState<any>({});
+
+  const fetchPartners = async () => {
+    try {
+      const res = await api.get('/partners');
+      const formatted = res.data.map((r: any) => ({
+        id: `PRT-${r.partnerId}`,
+        rawId: r.partnerId,
+        name: r.partnerName,
+        type: r.partnerType === 'FARM' ? 'Nông trại' : r.partnerType === 'TRANSPORT_COMPANY' ? 'Vận chuyển' : 'Cửa hàng',
+        taxCode: r.taxCode || 'N/A',
+        status: r.cooperationStatus === 'APPROVED' ? 'Đã duyệt' : r.cooperationStatus === 'PENDING' ? 'Chờ duyệt' : r.account?.status === 'LOCKED' ? 'Đã khóa' : 'Đã duyệt',
+        tone: r.cooperationStatus === 'APPROVED' ? 'active' : r.cooperationStatus === 'PENDING' ? 'warning' : 'locked',
+        representative: r.contactPerson,
+        email: r.account?.email,
+        phone: r.account?.phone,
+        address: r.address,
+        rawType: r.partnerType,
+        rawStatus: r.cooperationStatus,
+        stats: r.stats
+      }));
+      setPartnerRows(formatted);
+      if (selectedPartner) {
+        const updated = formatted.find((p: any) => p.id === selectedPartner.id);
+        if (updated) setSelectedPartner(updated);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPartners();
+  }, []);
+
+  const filteredPartnerRows = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
+    return partnerRows.filter((row: any) => {
+      const matchesSearch = !normalizedSearch || [
+        row.id,
+        row.name,
+        row.type,
+        row.taxCode,
+        row.status,
+        row.representative,
+        row.email,
+        row.phone,
+        row.address,
+        row.rawType,
+        row.rawStatus
+      ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
+
+      const matchesStatus = !statusFilter || row.rawStatus === statusFilter;
+      const matchesType = !typeFilter || row.rawType === typeFilter;
+
+      return matchesSearch && matchesStatus && matchesType;
+    });
+  }, [partnerRows, searchQuery, statusFilter, typeFilter]);
+
+  const handleTogglePartner = async () => {
+    try {
+      const isLocked = selectedPartner.status === 'Đã khóa';
+      const newStatus = isLocked ? 'APPROVED' : 'TERMINATED';
+      
+      await api.put(`/partners/${selectedPartner.rawId}/status`, { 
+        cooperationStatus: newStatus,
+        reason: toggleReason 
+      });
+      
+      alert(`Đã ${isLocked ? 'mở khóa' : 'khóa'} đối tác thành công!`);
+      setShowToggleModal(false);
+      setToggleReason('');
+      fetchPartners();
+    } catch (err) {
+      alert('Lỗi cập nhật');
+    }
   };
 
   const addLicensePlate = () => {
@@ -56,6 +128,49 @@ export function PartnersScreen({ data }: { data: any }) {
     setApprovalAction(action);
     setShowApprovalModal(true);
   };
+  
+  const submitApproval = async () => {
+    try {
+      const newStatus = approvalAction === 'approve' ? 'APPROVED' : 'TERMINATED';
+      await api.put(`/partners/${selectedPartner.rawId}/status`, {
+        cooperationStatus: newStatus,
+        reason
+      });
+      alert(`Đã ${approvalAction === 'approve' ? 'phê duyệt' : 'từ chối'} thành công!`);
+      setShowApprovalModal(false);
+      setReason('');
+      fetchPartners();
+    } catch (err) {
+      alert('Lỗi duyệt');
+    }
+  };
+
+  const submitAddPartner = async () => {
+    try {
+      let mappedType = newPartnerType;
+      if (newPartnerType === 'farm' || newPartnerType === 'supplier') mappedType = 'FARM';
+      else if (newPartnerType === 'shipping') mappedType = 'TRANSPORT_COMPANY';
+      else if (newPartnerType === 'store') mappedType = 'STORE';
+
+      await api.post('/partners', {
+        partnerName: addForm.name,
+        taxCode: addForm.taxCode,
+        partnerType: mappedType,
+        contactPerson: addForm.representative,
+        address: addForm.address,
+        cooperationStatus: 'APPROVED'
+      });
+      alert('Thêm đối tác thành công!');
+      setShowAddPartnerModal(false);
+      setAddForm({});
+      fetchPartners();
+    } catch (err) {
+      alert('Lỗi thêm đối tác');
+    }
+  };
+
+  void submitApproval;
+  void submitAddPartner;
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
@@ -73,25 +188,15 @@ export function PartnersScreen({ data }: { data: any }) {
 
       {/* Modern Filter Section */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center">
-        <div className="flex-1 min-w-[250px]">
+        <div className="flex-1 min-w-[250px]" onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}>
           <SearchBar placeholder="Tìm đối tác, mã số thuế..." />
         </div>
 
         <div className="hidden lg:block w-px h-8 bg-slate-200 mx-1"></div>
 
         <div className="relative min-w-[150px]">
-          <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
-            <option>Tháng này</option>
-            <option>Tháng trước</option>
-            <option>Quý này</option>
-            <option>Tất cả thời gian</option>
-          </select>
-        </div>
-
-        <div className="relative min-w-[150px]">
           <Tag size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select onChange={(e) => setStatusFilter(['', 'APPROVED', 'PENDING', 'TERMINATED'][e.target.selectedIndex] ?? '')} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tất cả trạng thái</option>
             <option>Đã duyệt</option>
             <option>Chờ duyệt</option>
@@ -101,7 +206,7 @@ export function PartnersScreen({ data }: { data: any }) {
 
         <div className="relative min-w-[150px]">
           <BarChart3 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select onChange={(e) => setTypeFilter(['', 'FARM', 'FARM', 'TRANSPORT_COMPANY', 'STORE'][e.target.selectedIndex] ?? '')} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Tất cả loại hình</option>
             <option>Nông trại</option>
             <option>Nhà cung cấp</option>
@@ -121,7 +226,7 @@ export function PartnersScreen({ data }: { data: any }) {
             <div></div>
           </div>
           <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-            {partnerRows.map((row: any) => (
+            {filteredPartnerRows.map((row: any) => (
               <div
                 key={row.id}
                 className={`grid grid-cols-[minmax(280px,1.7fr)_minmax(180px,1fr)_minmax(140px,0.7fr)_minmax(110px,0.5fr)_48px] gap-4 p-4 items-center hover:bg-slate-50 transition-colors cursor-pointer text-sm ${selectedPartner?.id === row.id ? 'bg-sage-50/30' : ''}`}
@@ -221,28 +326,28 @@ export function PartnersScreen({ data }: { data: any }) {
                   <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Building2 size={16} /></div>
                   <div>
                     <div className="text-[10px] font-bold uppercase text-slate-400">Đại diện pháp luật</div>
-                    <div className="text-sm font-semibold text-slate-800">{selectedPartner.representative || 'Nguyễn Văn A'}</div>
+                    <div className="text-sm font-semibold text-slate-800">{selectedPartner.representative || 'Chưa cập nhật'}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Phone size={16} /></div>
                   <div>
                     <div className="text-[10px] font-bold uppercase text-slate-400">Số điện thoại</div>
-                    <div className="text-sm font-semibold text-slate-800">{selectedPartner.phone || '0901.234.567'}</div>
+                    <div className="text-sm font-semibold text-slate-800">{selectedPartner.phone || 'Chưa cập nhật'}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Mail size={16} /></div>
                   <div>
                     <div className="text-[10px] font-bold uppercase text-slate-400">Email liên hệ</div>
-                    <div className="text-sm font-semibold text-slate-800">contact@{(selectedPartner?.id || 'PRT-000').toLowerCase()}.vn</div>
+                    <div className="text-sm font-semibold text-slate-800">{selectedPartner.email || 'Chưa cập nhật'}</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0 mt-0.5"><MapPin size={16} /></div>
                   <div>
                     <div className="text-[10px] font-bold uppercase text-slate-400">Địa chỉ đăng ký</div>
-                    <div className="text-sm font-semibold text-slate-800 leading-tight">123 Đường Nông Nghiệp, Huyện Củ Chi, TP. Hồ Chí Minh</div>
+                    <div className="text-sm font-semibold text-slate-800 leading-tight">{selectedPartner.address || 'Chưa cập nhật'}</div>
                   </div>
                 </div>
               </div>
@@ -257,14 +362,14 @@ export function PartnersScreen({ data }: { data: any }) {
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Clock size={16} /></div>
                         <div>
                           <div className="text-[10px] font-bold uppercase text-slate-400">Danh sách xe</div>
-                          <div className="text-sm font-semibold text-slate-800">51H-123.45, 51H-567.89</div>
+                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><BarChart3 size={16} /></div>
                         <div>
                           <div className="text-[10px] font-bold uppercase text-slate-400">Tải trọng tổng</div>
-                          <div className="text-sm font-semibold text-slate-800">15 Tấn</div>
+                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
                         </div>
                       </div>
                     </>
@@ -276,14 +381,14 @@ export function PartnersScreen({ data }: { data: any }) {
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><MapPin size={16} /></div>
                         <div>
                           <div className="text-[10px] font-bold uppercase text-slate-400">Diện tích canh tác</div>
-                          <div className="text-sm font-semibold text-slate-800">10 ha</div>
+                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><CheckCircle2 size={16} /></div>
                         <div>
                           <div className="text-[10px] font-bold uppercase text-slate-400">Chứng chỉ chất lượng</div>
-                          <div className="text-sm font-semibold text-slate-800">VietGAP, GlobalGAP</div>
+                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
                         </div>
                       </div>
                     </>
@@ -295,14 +400,14 @@ export function PartnersScreen({ data }: { data: any }) {
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Clock size={16} /></div>
                         <div>
                           <div className="text-[10px] font-bold uppercase text-slate-400">Giờ hoạt động</div>
-                          <div className="text-sm font-semibold text-slate-800">06:00 - 22:00</div>
+                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0"><Building2 size={16} /></div>
                         <div>
                           <div className="text-[10px] font-bold uppercase text-slate-400">Người quản lý</div>
-                          <div className="text-sm font-semibold text-slate-800">Nguyễn Văn Q</div>
+                          <div className="text-sm font-semibold text-slate-800 italic text-slate-400">Chưa hỗ trợ lưu trữ</div>
                         </div>
                       </div>
                     </>
@@ -542,12 +647,12 @@ export function PartnersScreen({ data }: { data: any }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                 <div className="col-span-1 md:col-span-2">
                   <label className="block text-sm font-bold text-slate-700 mb-2">Tên đối tác / Tổ chức <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="Nhập tên đối tác hoặc tổ chức..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 focus:ring-sage-500/50 focus:border-sage-500 rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all" />
+                  <input type="text" value={addForm.name || ""} onChange={(e) => setAddForm({...addForm, name: e.target.value})} placeholder="Nhập tên đối tác hoặc tổ chức..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 focus:ring-sage-500/50 focus:border-sage-500 rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all" />
                 </div>
                 
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Mã số thuế / CMND <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="Nhập mã số thuế..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 focus:ring-sage-500/50 focus:border-sage-500 rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all" />
+                  <input type="text" value={addForm.taxCode || ""} onChange={(e) => setAddForm({...addForm, taxCode: e.target.value})} placeholder="Nhập mã số thuế..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 focus:ring-sage-500/50 focus:border-sage-500 rounded-xl text-sm focus:bg-white focus:ring-2 outline-none transition-all" />
                 </div>
                 
                 <div>
@@ -760,10 +865,10 @@ export function PartnersScreen({ data }: { data: any }) {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Loại hình</label>
-                    <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800">
-                      <option value="Nông trại" selected={selectedPartner.type === 'Nông trại'}>Nông trại</option>
-                      <option value="Vận chuyển" selected={selectedPartner.type === 'Vận chuyển'}>Vận chuyển</option>
-                      <option value="Cửa hàng" selected={selectedPartner.type === 'Cửa hàng'}>Cửa hàng</option>
+                    <select defaultValue={selectedPartner.type} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 focus:bg-white outline-none transition-all font-medium text-slate-800">
+                      <option value="Nông trại">Nông trại</option>
+                      <option value="Vận chuyển">Vận chuyển</option>
+                      <option value="Cửa hàng">Cửa hàng</option>
                     </select>
                   </div>
                 </div>
