@@ -83,7 +83,12 @@ export function AccountsScreen(_props: { data: any }) {
         partnerType: acc.partner?.partnerType,
         partnerTypeLabel: partnerTypeNames[acc.partner?.partnerType] || acc.partner?.partnerType,
         taxCode: acc.partner?.taxCode,
-        contactPerson: acc.partner?.contactPerson
+        contactPerson: acc.partner?.contactPerson,
+        partnerCode: acc.partner?.partnerId ? `PRT-${acc.partner.partnerId.toString().padStart(3, '0')}` : '',
+        partnerAddress: acc.partner?.address,
+        partnerStatus: acc.partner?.cooperationStatus === 'APPROVED' ? 'Đã duyệt' : acc.partner?.cooperationStatus === 'PENDING' ? 'Chờ duyệt' : acc.partner?.cooperationStatus === 'TERMINATED' ? 'Đã khóa' : '',
+        partnerCreatedAtDisplay: formatDateTime(acc.partner?.createdAt),
+        partnerUpdatedAtDisplay: formatDateTime(acc.partner?.updatedAt)
       }));
       setRows(fetchedAccounts);
       
@@ -120,7 +125,12 @@ export function AccountsScreen(_props: { data: any }) {
         row.phone,
         row.role,
         row.rawRole,
-        row.partnerId ? String(row.partnerId) : ''
+        row.partnerId ? String(row.partnerId) : '',
+        row.partnerCode,
+        row.partnerName,
+        row.partnerTypeLabel,
+        row.taxCode,
+        row.contactPerson
       ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
 
       const matchesRole = !roleFilter || row.rawRole === roleFilter;
@@ -611,6 +621,22 @@ export function AccountsScreen(_props: { data: any }) {
                       <div className="text-xs text-slate-500 mb-1">Mã số thuế</div>
                       <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.taxCode)}</div>
                     </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Mã đối tác</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.partnerCode)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Trạng thái hợp tác</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.partnerStatus)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Người liên hệ</div>
+                      <div className="text-sm font-semibold text-slate-800">{displayValue(detailRow.contactPerson)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Địa chỉ đăng ký</div>
+                      <div className="text-sm font-semibold text-slate-800 leading-tight">{displayValue(detailRow.partnerAddress)}</div>
+                    </div>
                   </div>
                 </div>
 
@@ -624,6 +650,14 @@ export function AccountsScreen(_props: { data: any }) {
                     <div>
                       <div className="text-xs text-slate-500 mb-1">Cập nhật gần nhất</div>
                       <div className="text-sm font-semibold text-slate-800">{detailRow.updatedAtDisplay}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Ngày tạo hồ sơ đối tác</div>
+                      <div className="text-sm font-semibold text-slate-800">{detailRow.partnerCreatedAtDisplay}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Cập nhật hồ sơ đối tác</div>
+                      <div className="text-sm font-semibold text-slate-800">{detailRow.partnerUpdatedAtDisplay}</div>
                     </div>
                   </div>
                 </div>
