@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Filter, Download, ChevronLeft, ChevronRight, FileJson, Calendar, X, ArrowRight, User, History, ShieldCheck } from 'lucide-react';
 import { ExportPreviewModal } from '../../components/common/ExportPreviewModal';
-import { getAuditLogDetail, getAuditLogs, getAuditLogSummary, getBatchAuditTimeline, type AuditLogEntry, type AuditLogSummary, type AuditLogTimeline } from './auditApi';
+import { getAuditLogDetail, getAuditLogs, getAuditLogSummary, getBatchAuditTimeline, getTransportAuditTimeline, type AuditLogEntry, type AuditLogSummary, type AuditLogTimeline } from './auditApi';
 
 const objectTypeByTab: Record<string, string> = {
   'Lô hàng & Vận chuyển': 'BATCH,TRANSPORT,TRANSPORT_CHECKPOINT,INCIDENT,QR',
@@ -25,7 +25,10 @@ const actionLabels: Record<string, string> = {
   PARTNER_APPROVED: 'Duyệt đối tác',
   PARTNER_REJECTED: 'Từ chối đối tác',
   LOGIN_SUCCESS: 'Đăng nhập thành công',
-  LOGIN_FAILED: 'Đăng nhập thất bại'
+  LOGIN_FAILED: 'Đăng nhập thất bại',
+  CERTIFICATE_CREATED: 'Tạo chứng nhận',
+  CERTIFICATE_UPDATED: 'Cập nhật chứng nhận',
+  TRANSPORT_CONTINUED: 'Tiếp tục vận chuyển'
 };
 
 const pageSize = 10;
@@ -43,6 +46,29 @@ const objectTypeLabels: Record<string, string> = {
   TRANSPORT: 'Vận chuyển',
   TRANSPORT_CHECKPOINT: 'Checkpoint'
 };
+
+const statusLabels: Record<string, string> = {
+  CREATED: 'Mới tạo',
+  AT_WAREHOUSE: 'Tại kho',
+  IN_TRANSIT: 'Đang vận chuyển',
+  ARRIVED: 'Đã đến',
+  DELIVERED: 'Đã giao hàng',
+  CANCELLED: 'Đã hủy',
+  PENDING_PICKUP: 'Chờ lấy hàng',
+  ACTIVE: 'Hiệu lực',
+  INACTIVE: 'Hết hiệu lực',
+  PENDING: 'Đang chờ',
+  APPROVED: 'Đã duyệt',
+  REJECTED: 'Từ chối',
+  EXPIRED: 'Hết hạn',
+  ARRIVED_WAREHOUSE: 'Đã đến kho'
+};
+
+function translateValue(value: unknown) {
+  if (value === 'Bản ghi dữ liệu' || value === 'N/A') return 'Trống';
+  if (typeof value !== 'string') return String(value);
+  return statusLabels[value] || value;
+}
 
 const actionFilterOptions = [
   'LOGIN_SUCCESS',
@@ -112,7 +138,8 @@ function fieldLabel(field: string) {
 
 function displayValue(value: unknown) {
   if (value === null || value === undefined || value === '') return 'trống';
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'string') return translateValue(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return 'dữ liệu';
 }
 
@@ -143,6 +170,12 @@ function businessPayloadSummary(entry: AuditLogEntry) {
   if (entry.action === 'ACCOUNT_LOCKED') {
     const username = newRecord.username ?? oldRecord.username ?? entry.objectId;
     return `Khóa tài khoản ${displayValue(username)}`;
+  }
+  
+  if (entry.action === 'TRANSPORT_ASSIGNED') {
+    const fromLocation = (newRecord.farmPartner as any)?.partnerName || (newRecord.shipperPartner as any)?.partnerName || (newRecord.farmPartnerId ? `Farm ${newRecord.farmPartnerId}` : (newRecord.shipperPartnerId ? `Shipper ${newRecord.shipperPartnerId}` : 'Nơi lấy hàng'));
+    const toLocation = (newRecord.storePartner as any)?.partnerName || (newRecord.receiverPartner as any)?.partnerName || (newRecord.storePartnerId ? `Cửa hàng ${newRecord.storePartnerId}` : (newRecord.receiverPartnerId ? `Nơi nhận ${newRecord.receiverPartnerId}` : 'Nơi giao hàng'));
+    return `Phân công vận chuyển: Từ ${fromLocation} đến ${toLocation}`;
   }
 
   const candidate = newRecord.batchCode ?? newRecord.status ?? newRecord.transportStatus ?? newRecord.statusAtCheckpoint ?? newRecord.note ?? newRecord.action;
@@ -205,7 +238,7 @@ function getDateRange(dateFilter: string) {
 export function AuditLogScreen({ data }: { data: any }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [selectedBatchHistory, setSelectedBatchHistory] = useState<AuditLogTimeline | null>(null);
+  const [selectedTimeline, setSelectedTimeline] = useState<AuditLogTimeline | null>(null);
   const [selectedPayload, setSelectedPayload] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('Tất cả nhật ký');
   const [dateFilter, setDateFilter] = useState('7 ngày qua');
@@ -282,17 +315,32 @@ export function AuditLogScreen({ data }: { data: any }) {
     };
   }, [actionFilter, activeTab, actorIdFilter, currentPage, dateFilter, ipFilter, statusFilter, submittedSearch]);
 
-  /** Xử lý UC27: tải timeline thay đổi của một lô hàng từ API. */
-  async function handleViewHistory(batchId: string) {
+  async function handleViewBatchHistory(batchId: string) {
     const normalizedId = batchId.replace(/^BATCH-/, '');
     setTimelineError('');
 
     try {
       const history = await getBatchAuditTimeline(normalizedId);
-      setSelectedBatchHistory(history);
-    } catch {
-      setSelectedBatchHistory(null);
-      setTimelineError('Không tìm thấy lô hàng hoặc chưa có lịch sử thay đổi.');
+      setSelectedTimeline(history);
+    } catch (error: any) {
+      console.error(error);
+      setSelectedTimeline(null);
+      setTimelineError(`Lỗi: ${error.message || error} - Không tìm thấy lô hàng hoặc chưa có lịch sử thay đổi.`);
+    }
+  }
+
+  /** Tải timeline thay đổi của một chuyến xe từ API. */
+  async function handleViewTransportHistory(transportId: string) {
+    const normalizedId = transportId.replace(/^TRANS-/, '');
+    setTimelineError('');
+
+    try {
+      const history = await getTransportAuditTimeline(normalizedId);
+      setSelectedTimeline(history);
+    } catch (error: any) {
+      console.error(error);
+      setSelectedTimeline(null);
+      setTimelineError(`Lỗi: ${error.message || error} - Không tìm thấy chuyến xe hoặc chưa có lịch sử thay đổi.`);
     }
   }
 
@@ -439,10 +487,10 @@ export function AuditLogScreen({ data }: { data: any }) {
               </div>
               <div className="col-span-2">
                 <button
-                  onClick={() => entry.objectType === 'BATCH' ? handleViewHistory(entry.objectId) : setSubmittedSearch(entry.objectId)}
+                  onClick={() => entry.objectType === 'BATCH' || entry.objectType === 'Lô hàng' ? handleViewBatchHistory(entry.objectId) : entry.objectType === 'TRANSPORT' || entry.objectType === 'SHIPMENT' || entry.objectType === 'Vận chuyển' ? handleViewTransportHistory(entry.objectId) : setSubmittedSearch(entry.objectId)}
                   className="font-mono text-xs font-bold text-sage-700 bg-sage-50 px-2.5 py-1 rounded-lg hover:bg-sage-100 transition-colors border border-sage-200"
                 >
-                  {entry.batchId}
+                  {entry.objectType === 'BATCH' ? `Lô hàng-${entry.objectId}` : entry.objectType === 'TRANSPORT' ? `Vận chuyển-${entry.objectId}` : entry.batchId}
                 </button>
               </div>
               <div className="col-span-2 text-slate-800 font-bold">{entry.actor}</div>
@@ -451,17 +499,34 @@ export function AuditLogScreen({ data }: { data: any }) {
                 <button
                   onClick={() => handleViewPayload(entry)}
                   className="p-2 text-slate-500 hover:text-sage-700 hover:bg-slate-100 rounded-lg transition-all"
-                  title="Xem Payload JSON"
+                  title="Xem Payload gốc"
                 >
                   <FileJson size={18} />
                 </button>
-                <button
-                  onClick={() => entry.objectType === 'BATCH' ? handleViewHistory(entry.objectId) : setSubmittedSearch(entry.objectId)}
-                  className="p-2 text-slate-500 hover:text-sage-700 hover:bg-slate-100 rounded-lg transition-all"
-                  title="Lịch sử hoạt động"
-                >
-                  <History size={18} />
-                </button>
+                {entry.objectType === 'BATCH' || entry.objectType === 'Lô hàng' ? (
+                  <button
+                    onClick={() => handleViewBatchHistory(entry.objectId)}
+                    className="p-2 text-slate-500 hover:text-sage-700 hover:bg-slate-100 rounded-lg transition-all"
+                    title="Xem lịch sử truy vết lô hàng"
+                  >
+                    <History size={18} />
+                  </button>
+                ) : entry.objectType === 'TRANSPORT' || entry.objectType === 'SHIPMENT' || entry.objectType === 'Vận chuyển' ? (
+                  <button
+                    onClick={() => handleViewTransportHistory(entry.objectId)}
+                    className="p-2 text-slate-500 hover:text-sage-700 hover:bg-slate-100 rounded-lg transition-all"
+                    title="Xem timeline vận chuyển"
+                  >
+                    <History size={18} />
+                  </button>
+                ) : (
+                  <button
+                    className="p-2 text-slate-300 cursor-not-allowed rounded-lg"
+                    title="Đối tượng này không có timeline truy vết"
+                  >
+                    <History size={18} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -517,21 +582,24 @@ export function AuditLogScreen({ data }: { data: any }) {
         totalRows={totalRows}
       />
 
-      {selectedBatchHistory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh] border border-slate-100">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-sage-50 text-sage-600 rounded-xl flex items-center justify-center border border-sage-200">
-                  <History size={20} />
+      {selectedTimeline && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 border border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white sticky top-0 z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-sage-50 flex items-center justify-center border border-sage-100 shadow-sm">
+                  <History className="text-sage-600" size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800 tracking-tight">Truy vết lô hàng</h3>
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{selectedBatchHistory.batchId}</p>
+                  <h3 className="text-lg font-bold text-slate-800 tracking-tight">{selectedTimeline.targetType === 'TRANSPORT' ? 'Timeline vận chuyển' : 'Lịch sử truy vết lô hàng'}</h3>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{selectedTimeline.targetId || selectedTimeline.batchId}</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedBatchHistory(null)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-200 rounded-lg transition-all">
-                <X size={18} />
+              <button
+                onClick={() => setSelectedTimeline(null)}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
               </button>
             </div>
 
@@ -539,14 +607,14 @@ export function AuditLogScreen({ data }: { data: any }) {
               <div className="relative space-y-6">
                 <div className="absolute left-[7px] top-2 bottom-2 w-[1px] bg-slate-200"></div>
 
-                {selectedBatchHistory.items.map((item) => (
+                {selectedTimeline.items.map((item) => (
                   <div key={item.id} className="relative pl-7 group">
                     <div className="absolute left-0 top-1.5 w-3.5 h-3.5 bg-white border-2 border-sage-500 rounded-full z-10 ring-2 ring-white"></div>
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-sage-700 uppercase tracking-wide">{item.label || item.action}</span>
+                          <span className="font-bold text-sage-700 uppercase tracking-wide">{actionLabels[item.action] || item.label || item.action}</span>
                           <span className="text-slate-400">|</span>
                           <span className="font-semibold text-slate-600">{formatDateTime(item.timestamp)}</span>
                         </div>
@@ -554,11 +622,13 @@ export function AuditLogScreen({ data }: { data: any }) {
                           <div className="flex items-center gap-1.5 text-slate-600 font-semibold">
                             <User size={12} className="text-slate-400"/> {item.actor}
                           </div>
-                          <div className="text-[11px] font-mono font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            {item.ip || 'N/A'}
-                          </div>
+                          {item.ip && item.ip !== 'N/A' && (
+                            <div className="text-[11px] font-mono font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                              {item.ip === '::1' || item.ip === '127.0.0.1' ? 'Localhost' : `IP: ${item.ip}`}
+                            </div>
+                          )}
                           <button
-                            onClick={() => setSelectedPayload({ id: selectedBatchHistory.batchId, payload: item.payload || item.to })}
+                            onClick={() => setSelectedPayload({ id: selectedTimeline.targetId || selectedTimeline.batchId, payload: item.payload || item.to })}
                             className="p-1 text-slate-400 hover:text-sage-700 hover:bg-sage-100 rounded transition-all"
                             title="Xem chi tiết"
                           >
@@ -567,17 +637,42 @@ export function AuditLogScreen({ data }: { data: any }) {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 bg-slate-50/80 rounded-xl px-3 py-2 border border-slate-200 group-hover:bg-white group-hover:border-sage-200 transition-all text-xs">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Từ</div>
-                          <div className="text-slate-500 italic line-through truncate font-medium">{item.from}</div>
+                      {item.action === 'TRANSPORT_ASSIGNED' || item.action === 'TRANSPORT_CONTINUED' ? (
+                        <div className="flex items-center gap-3 bg-slate-50/80 rounded-xl px-3 py-2 border border-slate-200 group-hover:bg-white group-hover:border-sage-200 transition-all text-xs">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Nơi đi</div>
+                            <div className="text-slate-700 font-semibold truncate">
+                              {selectedTimeline?.metadata?.fromName || (item.payload as any)?.newValue?.farmPartner?.partnerName || (item.payload as any)?.newValue?.shipperPartner?.partnerName || ((item.payload as any)?.newValue?.farmPartnerId ? `Farm ${(item.payload as any).newValue.farmPartnerId}` : ((item.payload as any)?.newValue?.shipperPartnerId ? `Shipper ${(item.payload as any).newValue.shipperPartnerId}` : 'Nơi lấy hàng'))}
+                            </div>
+                          </div>
+                          <ArrowRight size={14} className="text-slate-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-bold text-sage-600 uppercase tracking-widest mb-0.5">Nơi đến</div>
+                            <div className="text-slate-800 font-bold truncate">
+                              {selectedTimeline?.metadata?.toName || (item.payload as any)?.newValue?.storePartner?.partnerName || (item.payload as any)?.newValue?.receiverPartner?.partnerName || ((item.payload as any)?.newValue?.storePartnerId ? `Cửa hàng ${(item.payload as any).newValue.storePartnerId}` : ((item.payload as any)?.newValue?.receiverPartnerId ? `Nơi nhận ${(item.payload as any).newValue.receiverPartnerId}` : 'Nơi giao hàng'))}
+                            </div>
+                          </div>
                         </div>
-                        <ArrowRight size={14} className="text-slate-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[10px] font-bold text-sage-600 uppercase tracking-widest mb-0.5">Đến</div>
-                          <div className="text-slate-800 font-bold truncate">{item.to}</div>
+                      ) : item.from === 'N/A' || !item.from || item.from === item.to || translateValue(item.from) === 'Trống' ? (
+                        <div className="flex items-center gap-3 bg-slate-50/80 rounded-xl px-3 py-2 border border-slate-200 group-hover:bg-white group-hover:border-sage-200 transition-all text-xs">
+                          <div className="flex-1 min-w-0 flex items-center justify-center gap-2">
+                            <span className="text-[10px] font-bold text-sage-600 uppercase tracking-widest">Trạng thái mới:</span>
+                            <span className="text-slate-800 font-bold truncate">{translateValue(item.to)}</span>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-3 bg-slate-50/80 rounded-xl px-3 py-2 border border-slate-200 group-hover:bg-white group-hover:border-sage-200 transition-all text-xs">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Nơi đi</div>
+                            <div className="text-slate-500 italic line-through truncate font-medium">{translateValue(item.from)}</div>
+                          </div>
+                          <ArrowRight size={14} className="text-slate-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-bold text-sage-600 uppercase tracking-widest mb-0.5">Nơi đến</div>
+                            <div className="text-slate-800 font-bold truncate">{translateValue(item.to)}</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -588,7 +683,7 @@ export function AuditLogScreen({ data }: { data: any }) {
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                 <ShieldCheck size={12} className="text-sage-600" /> Bản ghi bất biến (Immutable Record)
               </div>
-              <button onClick={() => setSelectedBatchHistory(null)} className="px-5 py-1.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-300 hover:bg-slate-100 transition-all">
+              <button onClick={() => setSelectedTimeline(null)} className="px-5 py-1.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-300 hover:bg-slate-100 transition-all">
                 Đóng
               </button>
             </div>
@@ -598,7 +693,7 @@ export function AuditLogScreen({ data }: { data: any }) {
 
       {selectedPayload && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50/50">
               <div className="flex items-center gap-2">
                 <FileJson size={16} className="text-slate-500" />
@@ -609,11 +704,19 @@ export function AuditLogScreen({ data }: { data: any }) {
               </button>
             </div>
 
-            <div className="p-6 bg-[#fafafa] overflow-x-auto border-b border-slate-200">
+            <div className="p-6 bg-[#fafafa] overflow-auto flex-1 border-b border-slate-200">
               <pre className="text-xs text-slate-700 font-mono font-medium leading-relaxed">
                 {typeof selectedPayload.payload === 'string'
                   ? selectedPayload.payload.split(' | ').join(',\n ')
-                  : JSON.stringify(selectedPayload.payload, null, 2)}
+                  : JSON.stringify(selectedPayload.payload, (key, value) => {
+                      const ignoredKeys = [
+                        'batch', 'checkpoints', 'incidents', 'certificates', 'qrCode', 'actor',
+                        'farmPartner', 'shipperPartner', 'storePartner', 'receiverPartner', 'transporterPartner',
+                        'createdAt', 'updatedAt', 'linkedAt', 'passwordHash', 'creator', 'deliveryConfirmer', 'issuer'
+                      ];
+                      if (ignoredKeys.includes(key)) return undefined;
+                      return value;
+                    }, 2)}
               </pre>
             </div>
 
