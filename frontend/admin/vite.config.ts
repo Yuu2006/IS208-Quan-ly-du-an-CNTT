@@ -9,6 +9,12 @@ export default defineConfig({
   server: {
     allowedHosts: true,
     port: 5174,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      }
+    }
   }
 })
 //npx ngrok http 5174
