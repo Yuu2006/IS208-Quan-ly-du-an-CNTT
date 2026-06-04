@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Tag, MapPin, Truck, CheckCircle2, User, Package, Clock, BarChart3, X, Leaf, FileText, History, ShieldCheck, Box, Navigation, AlertCircle, QrCode } from "lucide-react";
+import { Calendar, Tag, MapPin, Truck, CheckCircle2, User, Package, Clock, BarChart3, X, Leaf, FileText, History, ShieldCheck, Box, Navigation, AlertCircle } from "lucide-react";
 import { api } from "../../config/api";
 import { SearchBar } from '../../components/common/SearchBar';
 
@@ -205,6 +205,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
       ]);
 
       const getVietnameseStatus = (status: string) => {
+        if (status === "ARRIVED_WAREHOUSE") return "ÄÃ£ Ä‘áº¿n kho";
         switch(status) {
           case "CREATED": return "Mới tạo";
           case "AT_WAREHOUSE": return "Chờ vận chuyển";
@@ -218,6 +219,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
       };
 
       const getTone = (status: string) => {
+        if (status === "ARRIVED_WAREHOUSE") return "active";
         if (status === "DELIVERED") return "success";
         if (["IN_TRANSIT", "ARRIVED", "AT_WAREHOUSE", "PENDING_PICKUP"].includes(status)) return "active";
         if (["CANCELLED"].includes(status)) return "locked";
@@ -374,10 +376,21 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
   const filteredShipments = shipmentRows.filter((shipment: any) => {
     const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = !searchQuery || 
-      shipment.title.toLowerCase().includes(searchLower) ||
-      (shipment.batchCode && shipment.batchCode.toLowerCase().includes(searchLower)) ||
-      (shipment.route && shipment.route.toLowerCase().includes(searchLower));
+    const matchesSearch = !searchQuery || [
+      shipment.id,
+      shipment.title,
+      shipment.batchCode,
+      shipment.route,
+      shipment.status,
+      shipment.partner,
+      shipment.transport?.driverName,
+      shipment.transport?.licensePlate,
+      shipment.transport?.shipperPartner?.partnerName,
+      shipment.transport?.receiverPartner?.partnerName,
+      shipment.batch?.productName,
+      shipment.batch?.productType,
+      shipment.batch?.farmPartner?.partnerName
+    ].some((value) => String(value ?? '').toLowerCase().includes(searchLower));
       
     // Logic for Status Filter with grouping
     let matchesStatus = true;
@@ -409,9 +422,10 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
     // Logic for Date Filter
     let matchesDate = true;
     if (dateFilter !== "Tất cả") {
-      const createdAt = new Date(shipment.batch?.createdAt || shipment.transport?.createdAt || Date.now());
+      const createdAt = new Date(shipment.batch?.createdAt || shipment.transport?.createdAt || '');
       const now = new Date();
-      const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+      if (Number.isNaN(createdAt.getTime()) || createdAt > now) return false;
+      const diffTime = now.getTime() - createdAt.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
       if (dateFilter === "Hôm nay") {
@@ -448,7 +462,7 @@ export function ShippingScreen({ data, targetShipmentId }: { data: any, targetSh
 
         <div className="relative min-w-[150px]">
           <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
+          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sage-500 outline-none transition-all appearance-none cursor-pointer hover:bg-slate-100 font-medium text-slate-600">
             <option>Hôm nay</option>
             <option>7 ngày qua</option>
             <option>30 ngày qua</option>
