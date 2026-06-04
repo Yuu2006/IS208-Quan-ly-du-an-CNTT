@@ -293,6 +293,9 @@ function buildAuditLogWhere(query: AuditLogQuery) {
     actorId?: number;
     ipAddress?: { contains: string; mode: "insensitive" };
     createdAt?: { gte?: Date; lte?: Date };
+    AND?: Array<{
+      action?: { contains: string; mode: "insensitive" };
+    }>;
     OR?: Array<{
       action?: { contains: string; mode: "insensitive" };
       objectType?: { contains: string; mode: "insensitive" };
@@ -327,7 +330,12 @@ function buildAuditLogWhere(query: AuditLogQuery) {
   }
   if (objectId) where.objectId = { contains: objectId, mode: "insensitive" };
   if (ipAddress) where.ipAddress = { contains: ipAddress, mode: "insensitive" };
-  if (status) where.action = { contains: status, mode: "insensitive" };
+  if (status) {
+    where.AND = [
+      ...(where.AND ?? []),
+      { action: { contains: status, mode: "insensitive" } },
+    ];
+  }
   if (Number.isInteger(actorId)) where.actorId = actorId;
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -1094,6 +1102,96 @@ apiRouter.get("/accounts", authenticate, requireRole("ADMIN"), async (_req, res,
   }
 });
 
+/** Creates a new account. */
+apiRouter.post("/accounts", authenticate, requireRole("ADMIN"), async (req: RequestWithUser, res, next) => {
+  try {
+    const { username, password, fullName, email, phone, role, status, partnerId } = req.body;
+    
+    const account = await prisma.account.create({
+      data: {
+        username,
+        passwordHash: password,
+        fullName,
+        email,
+        phone,
+        role: role as any,
+        status: status as any || "ACTIVE",
+        partnerId: partnerId ? Number(partnerId) : undefined,
+      }
+    });
+
+    await appendAuditLog(prisma, auditContextFromRequest(req), {
+      action: "ACCOUNT_CREATED",
+      objectType: "ACCOUNT",
+      objectId: account.accountId,
+      newValue: { username, fullName, email, role, partnerId }
+    });
+
+    res.status(201).json(jsonSafe(account));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Updates an account. */
+apiRouter.put("/accounts/:accountId", authenticate, requireRole("ADMIN"), async (req: RequestWithUser, res, next) => {
+  try {
+    const accountId = Number(req.params.accountId);
+    const { fullName, email, phone, role } = req.body;
+    
+    const account = await prisma.account.update({
+      where: { accountId },
+      data: { fullName, email, phone, role: role as any }
+    });
+
+    await appendAuditLog(prisma, auditContextFromRequest(req), {
+      action: "ACCOUNT_UPDATED",
+      objectType: "ACCOUNT",
+      objectId: accountId,
+      newValue: { fullName, email, phone, role }
+    });
+
+    res.json(jsonSafe(account));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Toggles account status. */
+apiRouter.put("/accounts/:accountId/status", authenticate, requireRole("ADMIN"), async (req: RequestWithUser, res, next) => {
+  try {
+    const accountId = Number(req.params.accountId);
+    const { status, reason } = req.body;
+    
+    const existingAccount = await prisma.account.findUnique({ where: { accountId } });
+    if (!existingAccount) {
+      res.status(404).json({ message: "Account not found" });
+      return;
+    }
+
+    if (existingAccount.role === "ADMIN" && status === "LOCKED") {
+      res.status(403).json({ message: "Không được phép khóa tài khoản Quản trị viên." });
+      return;
+    }
+    
+    const account = await prisma.account.update({
+      where: { accountId },
+      data: { status: status as any }
+    });
+
+    await appendAuditLog(prisma, auditContextFromRequest(req), {
+      action: "ACCOUNT_STATUS_CHANGED",
+      objectType: "ACCOUNT",
+      objectId: accountId,
+      newValue: { status, reason }
+    });
+
+    res.json(jsonSafe(account));
+  } catch (error) {
+    next(error);
+  }
+});
+
 /** Lists transporter accounts for UC20 transport assignment. */
 apiRouter.get("/transporters", authenticate, requireRole("ADMIN", "FARMER"), async (_req, res, next) => {
   try {
@@ -1152,14 +1250,121 @@ apiRouter.get("/partners", authenticate, requireRole("ADMIN", "INSPECTOR"), asyn
             username: true,
             fullName: true,
             email: true,
+            phone: true,
             role: true,
             status: true,
           },
         },
+        transporterTransports: {
+          select: {
+            driverName: true,
+            licensePlate: true,
+          }
+        },
+        _count: {
+          select: {
+            farmBatches: true,
+            certificates: true,
+            storeTransports: true,
+          }
+        }
       },
     });
 
-    res.json(jsonSafe(partners));
+    const formatted = partners.map(p => {
+       const uniqueDrivers = Array.from(new Set(p.transporterTransports.map(t => t.driverName).filter(Boolean)));
+       const uniquePlates = Array.from(new Set(p.transporterTransports.map(t => t.licensePlate).filter(Boolean)));
+       return {
+         ...p,
+         transporterTransports: undefined,
+         stats: {
+           farmBatchesCount: p._count.farmBatches,
+           certificatesCount: p._count.certificates,
+           storeTransportsCount: p._count.storeTransports,
+           drivers: uniqueDrivers,
+           licensePlates: uniquePlates
+         }
+       };
+    });
+
+    res.json(jsonSafe(formatted));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Creates a new partner profile. */
+apiRouter.post("/partners", authenticate, requireRole("ADMIN", "INSPECTOR"), async (req: RequestWithUser, res, next) => {
+  try {
+    const { partnerType, partnerName, taxCode, address, contactPerson, cooperationStatus } = req.body;
+    
+    const partner = await prisma.partnerProfile.create({
+      data: {
+        partnerType: partnerType as any,
+        partnerName,
+        taxCode,
+        address,
+        contactPerson,
+        cooperationStatus: cooperationStatus as any || "APPROVED",
+      }
+    });
+
+    await appendAuditLog(prisma, auditContextFromRequest(req), {
+      action: "PARTNER_CREATED",
+      objectType: "PARTNER",
+      objectId: partner.partnerId,
+      newValue: { partnerType, partnerName, taxCode }
+    });
+
+    res.status(201).json(jsonSafe(partner));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Updates a partner profile. */
+apiRouter.put("/partners/:partnerId", authenticate, requireRole("ADMIN", "INSPECTOR"), async (req: RequestWithUser, res, next) => {
+  try {
+    const partnerId = Number(req.params.partnerId);
+    const { partnerType, partnerName, taxCode, address, contactPerson } = req.body;
+    
+    const partner = await prisma.partnerProfile.update({
+      where: { partnerId },
+      data: { partnerType: partnerType as any, partnerName, taxCode, address, contactPerson }
+    });
+
+    await appendAuditLog(prisma, auditContextFromRequest(req), {
+      action: "PARTNER_UPDATED",
+      objectType: "PARTNER",
+      objectId: partnerId,
+      newValue: { partnerType, partnerName, taxCode, address, contactPerson }
+    });
+
+    res.json(jsonSafe(partner));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Toggles partner cooperation status. */
+apiRouter.put("/partners/:partnerId/status", authenticate, requireRole("ADMIN", "INSPECTOR"), async (req: RequestWithUser, res, next) => {
+  try {
+    const partnerId = Number(req.params.partnerId);
+    const { cooperationStatus, reason } = req.body;
+    
+    const partner = await prisma.partnerProfile.update({
+      where: { partnerId },
+      data: { cooperationStatus: cooperationStatus as any }
+    });
+
+    await appendAuditLog(prisma, auditContextFromRequest(req), {
+      action: "PARTNER_STATUS_CHANGED",
+      objectType: "PARTNER",
+      objectId: partnerId,
+      newValue: { cooperationStatus, reason }
+    });
+
+    res.json(jsonSafe(partner));
   } catch (error) {
     next(error);
   }
