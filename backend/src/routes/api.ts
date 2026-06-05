@@ -2108,7 +2108,7 @@ apiRouter.post("/batches/:batchCode/assign-transport", authenticate, requireRole
 
     const expectedArrival = parseDateInput(expectedArrivalTime);
 
-    const assignedTransport = await prisma.$transaction(async (tx) => {
+    const assignedTransportId = await prisma.$transaction(async (tx) => {
       await tx.batch.update({
         where: { batchId: batch.batchId },
         data: {
@@ -2132,7 +2132,7 @@ apiRouter.post("/batches/:batchCode/assign-transport", authenticate, requireRole
               actualDeparture: existingTransport.actualDeparture ?? new Date(),
               expectedArrival,
             },
-            include: buildTransportInclude(),
+            select: { transportId: true },
           })
         : await tx.transport.create({
             data: {
@@ -2149,7 +2149,7 @@ apiRouter.post("/batches/:batchCode/assign-transport", authenticate, requireRole
               expectedArrival,
               createdBy: req.currentUser?.accountId ?? null,
             },
-            include: buildTransportInclude(),
+            select: { transportId: true },
           });
 
       const firstCheckpoint = await tx.transportCheckpoint.findFirst({
@@ -2183,13 +2183,27 @@ apiRouter.post("/batches/:batchCode/assign-transport", authenticate, requireRole
         action: "TRANSPORT_ASSIGNED",
         objectType: "TRANSPORT",
         objectId: transport.transportId,
-        newValue: transport,
+        newValue: {
+          transportId: transport.transportId,
+          batchId: batch.batchId,
+          shipperPartnerId: batch.farmPartnerId,
+          farmPartnerId: batch.farmPartnerId,
+          receiverPartnerId: receiverPartner.partnerId,
+          storePartnerId: receiverPartner.partnerId,
+          transporterPartnerId: transporterPartner.partnerId,
+          driverName: name,
+          licensePlate: normalizeOptionalText(licensePlate),
+          transportStatus: TransportStatus.IN_TRANSIT,
+          expectedArrival,
+        },
       });
 
-      return tx.transport.findUniqueOrThrow({
-        where: { transportId: transport.transportId },
-        include: buildTransportInclude(),
-      });
+      return transport.transportId;
+    }, { timeout: 15000 });
+
+    const assignedTransport = await prisma.transport.findUniqueOrThrow({
+      where: { transportId: assignedTransportId },
+      include: buildTransportInclude(),
     });
 
     res.status(201).json(jsonSafe(assignedTransport));
